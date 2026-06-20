@@ -29,6 +29,54 @@ the core; you can delete any genre module you don't need without touching the ot
 | **DesignPatternsGAS** | Runtime (opt-in) | Bridge from the lightweight action system to GAS. Not enabled by default — see below. | core |
 | **DesignPatternsTests** | UncookedOnly | Automation tests (`#if WITH_AUTOMATION_TESTS`) | core |
 
+### 1a. High-level composable layer
+
+Higher-level, genre-agnostic systems you **assemble** to build a game. Everything below couples to
+everything else **only through interface seams** (`TScriptInterface`) owned by the `DesignPatternsSeams`
+leaf module — so any genre mix composes and any module can be deleted without breaking the others.
+
+| Module | Type | Purpose | Depends on |
+|---|---|---|---|
+| **DesignPatternsSeams** | Runtime | Shared interface seams + value types (`ISeam_SimClock/NeedProvider/Persistable/EntityIdentity/TileProviderRead/InputModeArbiter/AnalyticsSink/ActivationGate/TextToSpeech/AccessibilityConsumer`; `FSeam_NetValue` closed net variant, `FSeam_EntityId`, `FSeam_CellCoord`). The composition spine — every high-level module depends only on this. | core |
+| **DesignPatternsEntity** | Runtime | Composable entity-trait / capability system (ECS-flavored): stable identity + data-driven trait set, capability queries, archetype data assets | core, Seams |
+| **DesignPatternsWorld** | Runtime | Central data hub / world state: tag-keyed flags/variables/counters, scoped (global/faction/entity) blackboards, query layer, save + optional replication | core, Seams |
+| **DesignPatternsSimGrid** | Runtime | Grid/tile world + placement: chunked grid (delta-replicated cells), placement rules/validation, spatial queries, territory | core, Seams |
+| **DesignPatternsInteraction** | Runtime | General interaction: `IInteract_Interactable`, interactor component (server-validated), focus targeting, data-driven verbs | core, Seams |
+| **DesignPatternsSimEconomy** | Runtime | Simulation economy: commodities/stockpiles, production/consumption chains, market price formation, trade | core, Seams |
+| **DesignPatternsSimAgents** | Runtime | Sim agents: sim clock, schedules, generalized needs, utility-AI brain (on core Strategy), job board, crowd steering | core, Seams, Entity |
+| **DesignPatternsInventoryUI** | Runtime | Generalized inventory/grid **window** UI (bags, crafting grids, hotbars, equipment, shops, chests) bound to any backend via `IInvUI_ItemContainer` | core, UI, Seams |
+
+### 1b. Reactive layer (Wave-1)
+
+Genre-agnostic reactive systems that **wrap** the engine's strong subsystems and react to gameplay via
+the message bus / seams. Almost entirely local/cosmetic; the few authoritative bits feed the World hub.
+
+| Module | Type | Purpose | Depends on |
+|---|---|---|---|
+| **DesignPatternsAudio** | Runtime | Tag-keyed sound manager/buses, adaptive layered music (state model), mix snapshots, ambience | core, Seams |
+| **DesignPatternsCamera** | Runtime | Priority/blend camera-mode stack, modes-as-strategy, shake-by-tag, targeting/lock-on (wraps `APlayerCameraManager`) | core, Seams |
+| **DesignPatternsAI** | Runtime | Advanced AI: perception adapter, behavior bridge (FSM or BehaviorTree), squad tactics, budget/wave spawn director (wraps AIModule) | core, Seams; World+SimAgents private |
+| **DesignPatternsNarrative** | Runtime | Dialogue graph + runner, branching story director, cutscene/sequence control (wraps LevelSequence), condition/effect mini-language | core, Seams, World |
+| **DesignPatternsHUD** | Runtime | HUD layout, notification/toast queue, minimap/markers, menu navigation stack, Enhanced Input context layering | core, UI, Seams, Platform |
+
+### 1c. Infrastructure layer (Wave-2)
+
+Cross-cutting infrastructure. Engine-wrapping, opt-in, privacy-safe.
+
+| Module | Type | Purpose | Depends on |
+|---|---|---|---|
+| **DesignPatternsAnalytics** | Runtime | Tag-keyed event recording (consent-gated, PII-safe via `FSeam_NetValue`), bus→event mapping, progression metrics, A/B experiments (wraps `IAnalyticsProvider` via a seam) | core, Seams |
+| **DesignPatternsLocalization** | Runtime | Localization (wraps FText/StringTable/culture), subtitles, accessibility options (colorblind/subtitle/UI-scale/shake/TTS) broadcast to consumers | core, UI, Seams |
+| **DesignPatternsLevelDirector** | Runtime | Level streaming director, deterministic procedural placement (seeded, authority-only, via core Factory/Pool), spawn regions, activation gating | core, Seams |
+| **DesignPatternsModContent** | Runtime | Mod/DLC content-pack pipeline: discover/mount/unmount packs, tag→asset override registry over the data registry, validate-before-activate | core, Seams |
+| **DesignPatternsModContentEditor** | UncookedOnly | Data-validation commandlet hook (CI) + editor validation of content packs | ModContent |
+
+> **Composition guarantee:** none of the high-level / reactive / infrastructure modules hard-includes
+> another sibling or any genre module. All cross-module coupling is through `DesignPatternsSeams`
+> interfaces resolved from the service locator (or off an actor) and message-bus tags. Delete any one
+> module and the rest still compile and run — the seam, not the provider, is the link dependency, and an
+> unresolved seam degrades to a documented inert default (gate=open, sink=no-op, TTS=silent).
+
 ---
 
 ## 2. Folder classification (how to find things)

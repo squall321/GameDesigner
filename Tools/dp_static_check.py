@@ -247,7 +247,15 @@ def check_modules():
     expected = {"DesignPatterns", "DesignPatternsUI", "DesignPatternsDeveloper",
                 "DesignPatternsEditor", "DesignPatternsGAS", "DesignPatternsTests",
                 "DesignPatternsPlatform", "DesignPatternsCombat", "DesignPatternsRPG",
-                "DesignPatternsSurvival", "DesignPatternsNet"}
+                "DesignPatternsSurvival", "DesignPatternsNet",
+                "DesignPatternsSeams", "DesignPatternsEntity", "DesignPatternsWorld",
+                "DesignPatternsSimGrid", "DesignPatternsInteraction", "DesignPatternsSimEconomy",
+                "DesignPatternsSimAgents", "DesignPatternsInventoryUI",
+                "DesignPatternsAudio", "DesignPatternsCamera", "DesignPatternsAI",
+                "DesignPatternsNarrative", "DesignPatternsHUD",
+                "DesignPatternsAnalytics", "DesignPatternsLocalization",
+                "DesignPatternsLevelDirector", "DesignPatternsModContent",
+                "DesignPatternsModContentEditor"}
     for mod in expected:
         n = impls.get(mod, 0)
         if n == 0:

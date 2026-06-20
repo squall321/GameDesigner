@@ -28,6 +28,21 @@ Unreal Engine **5.3 – 5.5** with the C++ toolchain:
 - **Linux:** the engine's bundled clang toolchain.
 - **Android/iOS:** the platform SDKs configured in the engine (Android Studio/NDK, Xcode).
 
+### Engine modules used by the high-level layers
+
+These ship with the engine; UBT links them automatically from each module's `Build.cs`. If your
+target trims engine features, ensure these are available (or delete the module that needs them — every
+module is independently removable):
+
+- `AudioMixer` (Audio mix/bus), `EnhancedInput` (HUD input contexts), `AIModule` + `GameplayTasks` +
+  `NavigationSystem` (AI, SimAgents steering), `LevelSequence` + `MovieScene` (Narrative cutscenes),
+  `Analytics` (Analytics sink backend), `Projects` + `PakFile` + `AssetRegistry` (ModContent),
+  `UMG` / `Slate` / `FieldNotification` (UI, InventoryUI, HUD, Localization subtitles),
+  `NetCore` + `StructUtils` (replication / `FInstancedStruct`; StructUtils only on 5.3–5.4).
+
+The `DesignPatternsModContentEditor` and `DesignPatternsEditor` modules are `UncookedOnly` (editor/
+dev builds only) and depend on `UnrealEd` / `DataValidation` / `GameplayDebugger`.
+
 ## Option A — verify the plugin compiles for several platforms (no game needed)
 
 This is the fastest cross-platform check. It runs `RunUAT BuildPlugin`, which compiles the plugin
