@@ -2,6 +2,7 @@
 
 #include "Health/Combat_HealthComponent.h"
 #include "Hit/Combat_HitTypes.h"
+#include "Pipeline/Combat_DamageContext.h"
 #include "Combat_NativeTags.h"
 
 #include "Core/DPLog.h"
@@ -89,6 +90,26 @@ float UCombat_HealthComponent::ApplyDamage(float DamageAmount, AActor* Instigato
 	}
 
 	return Applied;
+}
+
+float UCombat_HealthComponent::ApplyDamageFromResult(const FCombat_DamageResult& Result)
+{
+	// AUTHORITY GUARD at the top — delegates to ApplyDamage which also re-guards, but we early-out
+	// here too so the (FinalDamage - DotDamage) arithmetic never runs needlessly on clients.
+	if (!HasAuthoritySafe())
+	{
+		return 0.f;
+	}
+
+	// The DoT portion is applied separately by the pipeline through the status component; the instant
+	// portion is what hits HP now. Clamp to non-negative as a defensive guard.
+	const float InstantDamage = FMath::Max(0.f, Result.FinalDamage - Result.DotDamage);
+	if (InstantDamage <= 0.f)
+	{
+		return 0.f;
+	}
+
+	return ApplyDamage(InstantDamage, Result.Instigator.Get());
 }
 
 float UCombat_HealthComponent::Heal(float HealAmount)

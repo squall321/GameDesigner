@@ -58,10 +58,16 @@ namespace NarrativeStoryNativeTags
 	/** Service key under which the story director registers itself (for direct typed resolution). */
 	DESIGNPATTERNSNARRATIVE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_Narrative_StoryDirector);
 
+	/** Service key under which UNarr_ReputationSubsystem registers as the ISeam_Reputation owner. */
+	DESIGNPATTERNSNARRATIVE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_Narrative_Reputation);
+
 	// --- Persistence-kind tags (children of a DP.Persist root) ---
 
 	/** Persistence kind for the story director's beat/arc tracking record. */
 	DESIGNPATTERNSNARRATIVE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Narrative_Story);
+
+	/** Persistence kind for the reputation subsystem's standing record. */
+	DESIGNPATTERNSNARRATIVE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Narrative_Reputation);
 
 	// --- Input-mode tag pushed onto the shared input-mode arbiter while a cutscene plays ---
 

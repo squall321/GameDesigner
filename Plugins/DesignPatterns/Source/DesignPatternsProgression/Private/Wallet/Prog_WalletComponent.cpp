@@ -300,3 +300,23 @@ void UProg_WalletComponent::GetAllBalances_Implementation(TMap<FGameplayTag, int
 		}
 	}
 }
+
+// ---- ISeam_WalletAuthority (write dual; delegates to the existing authority-guarded mutators) ----
+
+bool UProg_WalletComponent::CanSpend_Implementation(FGameplayTag CurrencyTag, int64 Amount) const
+{
+	// Read-only: identical to CanAfford. Safe to call anywhere.
+	return CanAfford_Implementation(CurrencyTag, Amount);
+}
+
+bool UProg_WalletComponent::Spend_Implementation(FGameplayTag CurrencyTag, int64 Amount)
+{
+	// AUTHORITY ONLY: SpendCurrency guards HasAuthority() at the top and returns false on clients.
+	return SpendCurrency(CurrencyTag, Amount);
+}
+
+int64 UProg_WalletComponent::Grant_Implementation(FGameplayTag CurrencyTag, int64 Amount)
+{
+	// AUTHORITY ONLY: AddCurrency guards HasAuthority() at the top and is a no-op on clients.
+	return AddCurrency(CurrencyTag, Amount);
+}

@@ -8,6 +8,7 @@
 #include "Combat_HealthComponent.generated.h"
 
 class UCombat_HealthComponent;
+struct FCombat_DamageResult;
 
 /**
  * Fired (on every machine) when Health decreases. Delta is negative for damage.
@@ -64,6 +65,20 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "DesignPatternsCombat|Health")
 	float ApplyDamage(float DamageAmount, AActor* Instigator = nullptr);
+
+	/**
+	 * ADDITIVE deep-layer entry point: apply the instant-HP portion of a fully-resolved damage result.
+	 * AUTHORITY ONLY. This does NOT change or replace ApplyDamage — it is a thin convenience that the
+	 * deep damage pipeline (UCombat_DamagePipelineComponent) calls after the PURE execution has already
+	 * computed mitigation. It applies (FinalDamage - DotDamage) instantly (the DoT portion is applied
+	 * separately by the pipeline via the status component), credits the result's instigator, and routes
+	 * through ApplyDamage so death / OnDamaged / the bus message all behave exactly as before.
+	 *
+	 * @param Result the immutable, already-mitigated result from the pipeline.
+	 * @return the actual instant damage applied.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "DesignPatternsCombat|Health")
+	float ApplyDamageFromResult(const FCombat_DamageResult& Result);
 
 	/**
 	 * Heal this component. AUTHORITY ONLY (no-op on clients). Cannot revive the dead;

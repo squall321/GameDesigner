@@ -15,8 +15,21 @@ public class DesignPatternsSurvival : ModuleRules
 			"Engine",
 			"GameplayTags",
 			"NetCore",        // DOREPLIFETIME / replicated UPROPERTYs on components & subsystem-host actor
-			"DesignPatterns"  // core: data registry, subsystem bases/accessors, message bus, native tags, logging
+			"DesignPatterns", // core: data registry, subsystem bases/accessors, message bus, native tags, logging
+
+			// Leaf seams (additive deepening): grid read (ISeam_TileProviderRead + FSeam_CellCoord/
+			// FSeam_CellSnapshot for placement validation), stable identity (ISeam_EntityIdentity +
+			// FSeam_EntityId for building-piece ids), persistence (ISeam_Persistable + FInstancedStruct
+			// for knowledge/structure save), and the PROMOTED resource automation seams
+			// (ISeam_ResourceProducer/Consumer) so a placed building presents as a producer WITHOUT a
+			// DesignPatternsSimEconomy dependency. These are leaf seams: additive, no genre coupling.
+			"DesignPatternsSeams"
 		});
+
+		// NOTE (HARD RULE 3 — no sibling-genre coupling): we deliberately DO NOT add
+		// "DesignPatternsSimEconomy". The building automation chain consumes the PROMOTED
+		// ISeam_ResourceProducer/ISeam_ResourceConsumer that now live in DesignPatternsSeams; the
+		// concrete USimEco_ProducerComponent is never included here.
 
 		// NOTE ON INVENTORY DEPENDENCY (HARD RULE for this module):
 		// The brief allows depending on DesignPatternsRPG for inventory OR shipping a lightweight

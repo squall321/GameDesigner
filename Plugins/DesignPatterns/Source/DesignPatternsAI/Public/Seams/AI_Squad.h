@@ -50,4 +50,17 @@ public:
 	 * in sync with the formation shape; movers read this to position themselves.
 	 */
 	virtual FTransform GetFormationSlot(FSeam_EntityId Member) const = 0;
+
+	/**
+	 * Append the stable ids of every member of this squad to OutMembers (the array is NOT cleared first,
+	 * so callers can accumulate across multiple providers if they wish). Reads the active squad's roster.
+	 *
+	 * ADDED additively for tactical coordination: surround/flank strategies and squad-shared threat need
+	 * to enumerate squadmates WITHOUT including the concrete carrier (AAI_SquadCarrier) — this is the
+	 * single read entry point for that. Safe to call on any machine (membership replicates on the carrier);
+	 * a provider backing no live squad simply appends nothing.
+	 *
+	 * @param OutMembers Receives the squad members' stable ids (appended).
+	 */
+	virtual void GetMembers(TArray<FSeam_EntityId>& OutMembers) const = 0;
 };

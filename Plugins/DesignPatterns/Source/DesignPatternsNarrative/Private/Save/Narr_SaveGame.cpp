@@ -2,6 +2,7 @@
 
 #include "Save/Narr_SaveGame.h"
 #include "Story/Narr_StoryDirectorSubsystem.h"
+#include "Reputation/Narr_ReputationSubsystem.h"
 
 #include "Core/DPSubsystemLibrary.h"
 #include "Core/DPLog.h"
@@ -43,6 +44,19 @@ void UNarr_SaveGame::GatherBuiltinParticipants(TArray<TScriptInterface<ISeam_Per
 		TScriptInterface<ISeam_Persistable> Iface;
 		Iface.SetObject(Director);
 		Iface.SetInterface(Cast<ISeam_Persistable>(Director));
+		if (Iface.GetInterface())
+		{
+			Out.Add(Iface);
+		}
+	}
+
+	// The reputation subsystem is the second always-saved narrative participant (the reputation owner).
+	if (UNarr_ReputationSubsystem* Reputation =
+		FDP_SubsystemStatics::GetGameInstanceSubsystem<UNarr_ReputationSubsystem>(Ctx))
+	{
+		TScriptInterface<ISeam_Persistable> Iface;
+		Iface.SetObject(Reputation);
+		Iface.SetInterface(Cast<ISeam_Persistable>(Reputation));
 		if (Iface.GetInterface())
 		{
 			Out.Add(Iface);

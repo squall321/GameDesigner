@@ -7,6 +7,7 @@
 #include "Net/Serialization/FastArraySerializer.h"
 #include "GameplayTagContainer.h"
 #include "Economy/Seam_Wallet.h"
+#include "Economy/Seam_WalletAuthority.h"
 #include "Prog_WalletComponent.generated.h"
 
 class UProg_WalletComponent;
@@ -96,7 +97,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FProg_OnBalanceChanged,
  * owning client). It does not tick.
  */
 UCLASS(ClassGroup = (DesignPatternsProgression), meta = (BlueprintSpawnableComponent))
-class DESIGNPATTERNSPROGRESSION_API UProg_WalletComponent : public UActorComponent, public ISeam_Wallet
+class DESIGNPATTERNSPROGRESSION_API UProg_WalletComponent : public UActorComponent, public ISeam_Wallet, public ISeam_WalletAuthority
 {
 	GENERATED_BODY()
 
@@ -143,6 +144,16 @@ public:
 
 	/** Append every (currency tag -> balance) pair this wallet holds. */
 	virtual void GetAllBalances_Implementation(TMap<FGameplayTag, int64>& OutBalances) const override;
+
+	//~ Begin ISeam_WalletAuthority — the authority WRITE dual of the read-only ISeam_Wallet, so economy
+	// systems (shop / bank / merchant / reward) debit and credit the wallet without depending on this module.
+	/** True if a Spend of Amount would currently succeed (read-only, safe anywhere). */
+	virtual bool CanSpend_Implementation(FGameplayTag CurrencyTag, int64 Amount) const override;
+	/** Debit Amount of CurrencyTag. AUTHORITY ONLY (delegates to SpendCurrency, which guards). */
+	virtual bool Spend_Implementation(FGameplayTag CurrencyTag, int64 Amount) override;
+	/** Credit Amount of CurrencyTag. AUTHORITY ONLY (delegates to AddCurrency, which guards). */
+	virtual int64 Grant_Implementation(FGameplayTag CurrencyTag, int64 Amount) override;
+	//~ End ISeam_WalletAuthority
 
 	// ---- Read helpers (client-safe) ----
 

@@ -11,6 +11,7 @@
 
 class AAI_SquadCarrier;
 class UDP_ServiceLocatorSubsystem;
+class UAI_FormationDataAsset;
 
 /**
  * World-scoped coordinator for tactical squads. Implements IAI_Squad so other systems read squad
@@ -53,6 +54,7 @@ public:
 	virtual FGuid GetSquadId() const override;
 	virtual FGameplayTag GetRole(FSeam_EntityId Member) const override;
 	virtual FTransform GetFormationSlot(FSeam_EntityId Member) const override;
+	virtual void GetMembers(TArray<FSeam_EntityId>& OutMembers) const override;
 
 	// ---- Squad lifecycle (AUTHORITY ONLY for the spawn; reads are client-safe) ----------------
 
@@ -100,6 +102,15 @@ public:
 	/** Move SquadId's anchor (formation origin). AUTHORITY ONLY. @return true if the squad exists. */
 	UFUNCTION(BlueprintCallable, Category = "DesignPatterns|AI|Squad")
 	bool SetSquadAnchor(FGuid SquadId, FTransform Anchor);
+
+	/**
+	 * Assign a designer FORMATION asset to SquadId so RebuildFormation lays members out by the asset's
+	 * shape instead of the fallback grid. AUTHORITY ONLY. Pass null to revert to the fallback grid. The
+	 * asset is held only here (subsystem-side) — never replicated onto the carrier. @return true if the
+	 * squad exists. Re-lays out the formation immediately.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "DesignPatterns|AI|Squad")
+	bool AssignFormationAsset(FGuid SquadId, UAI_FormationDataAsset* Formation);
 
 	// ---- Reads (client-safe) ------------------------------------------------------------------
 
@@ -149,4 +160,14 @@ private:
 
 	/** Compute the relative grid slot for member index Index of a squad of Count members. */
 	FTransform ComputeGridSlot(int32 Index, int32 Count) const;
+
+	/**
+	 * Compute the relative slot for member Index using the formation asset assigned to SquadId, or fall
+	 * back to ComputeGridSlot when no asset is assigned. Additive helper — leaves the grid math untouched.
+	 */
+	FTransform ComputeAssetSlot(const FGuid& SquadId, int32 Index, int32 Count) const;
+
+	/** Per-squad assigned formation assets (subsystem-side only; never replicated onto the carrier). */
+	UPROPERTY(Transient)
+	TMap<FGuid, TObjectPtr<UAI_FormationDataAsset>> FormationAssets;
 };

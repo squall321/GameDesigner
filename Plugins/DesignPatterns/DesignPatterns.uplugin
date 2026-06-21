@@ -186,6 +186,11 @@
 			"LoadingPhase": "Default"
 		},
 		{
+			"Name": "DesignPatternsMovement",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
 			"Name": "DesignPatternsDeveloper",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"

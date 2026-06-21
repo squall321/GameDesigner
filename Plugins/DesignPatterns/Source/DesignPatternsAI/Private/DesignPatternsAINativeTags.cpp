@@ -31,4 +31,18 @@ namespace AINativeTags
 	UE_DEFINE_GAMEPLAY_TAG(AI_Percept_Damage,  "AI.Percept.Damage");
 
 	UE_DEFINE_GAMEPLAY_TAG(AI_Role, "AI.Role");
+
+	// Tactical depth: service-locator keys (children of the core DP.Service root).
+	UE_DEFINE_GAMEPLAY_TAG(Service_AI_Query, "DP.Service.AI.Query");
+	UE_DEFINE_GAMEPLAY_TAG(Service_AI_Cover, "DP.Service.AI.Cover");
+
+	// Tactical depth: leaf bus channels (children of DP.Bus.AI).
+	UE_DEFINE_GAMEPLAY_TAG(Bus_AI_Cover_Claimed, "DP.Bus.AI.Cover.Claimed");
+	UE_DEFINE_GAMEPLAY_TAG(Bus_AI_Tactic,        "DP.Bus.AI.Tactic");
+
+	// Tactical depth: vocabulary roots.
+	UE_DEFINE_GAMEPLAY_TAG(AI_Cover,         "AI.Cover");
+	UE_DEFINE_GAMEPLAY_TAG(AI_Tactic,        "AI.Tactic");
+	UE_DEFINE_GAMEPLAY_TAG(AI_Stance,        "AI.Stance");
+	UE_DEFINE_GAMEPLAY_TAG(AI_Query_Purpose, "AI.Query.Purpose");
 }

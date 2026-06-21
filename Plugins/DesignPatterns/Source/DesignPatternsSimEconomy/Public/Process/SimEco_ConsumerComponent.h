@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Process/SimEco_ProcessComponentBase.h"
 #include "Seams/SimEco_ResourceConsumer.h"
+#include "Economy/Seam_ResourceConsumer.h" // PROMOTED leaf seam: implemented additively below
 #include "SimEco_ConsumerComponent.generated.h"
 
 /**
@@ -19,6 +20,7 @@ UCLASS(ClassGroup = (DesignPatternsSimEconomy), meta = (BlueprintSpawnableCompon
 class DESIGNPATTERNSSIMECONOMY_API USimEco_ConsumerComponent
 	: public USimEco_ProcessComponentBase
 	, public ISimEco_ResourceConsumer
+	, public ISeam_ResourceConsumer // PROMOTED: also presents through the leaf Seams interface (additive)
 {
 	GENERATED_BODY()
 
@@ -27,7 +29,10 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	//~ End UActorComponent
 
-	//~ Begin ISimEco_ResourceConsumer
+	// NOTE: ISimEco_ResourceConsumer and the PROMOTED ISeam_ResourceConsumer declare identical method
+	// signatures, so a SINGLE set of *_Implementation overrides satisfies BOTH interface vtables.
+
+	//~ Begin ISimEco_ResourceConsumer / ISeam_ResourceConsumer (shared overrides)
 	virtual FGameplayTag GetActiveProcessTag_Implementation() const override { return GetProcessTag(); }
 	virtual bool IsConsuming_Implementation() const override { return IsRunning(); }
 	virtual float GetConsumptionProgress_Implementation() const override { return GetCycleProgress(); }
@@ -35,7 +40,7 @@ public:
 	virtual bool IsStarved_Implementation() const override { return bStarved; }
 	virtual bool SetActiveProcess_Implementation(FGameplayTag ProcessTag) override { return StartProcess(ProcessTag); }
 	virtual void CancelConsumption_Implementation() override { CancelProcess(); }
-	//~ End ISimEco_ResourceConsumer
+	//~ End shared consumer overrides
 
 protected:
 	//~ Begin USimEco_ProcessComponentBase

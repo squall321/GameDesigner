@@ -92,4 +92,34 @@ namespace AINativeTags
 
 	/** Root of the squad/tactical role vocabulary used by the behavior bridge and threat table. */
 	DESIGNPATTERNSAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(AI_Role);
+
+	// ---- Tactical depth: service-locator key anchors (children of the core DP.Service root) ----
+
+	/** Key under which the EQS-style query subsystem self-registers (resolves UAI_QuerySubsystem). */
+	DESIGNPATTERNSAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_AI_Query);
+
+	/** Key under which the cover subsystem self-registers (resolves ISeam_CoverProvider). */
+	DESIGNPATTERNSAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_AI_Cover);
+
+	// ---- Tactical depth: message-bus channel anchors (children of DP.Bus.AI) ----
+
+	/** Broadcast (locally) when an agent claims/releases a cover point (payload FAI_CoverClaimPayload). */
+	DESIGNPATTERNSAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_AI_Cover_Claimed);
+
+	/** Broadcast (locally) when an agent executes/changes a group tactic (payload FAI_TacticPayload). */
+	DESIGNPATTERNSAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_AI_Tactic);
+
+	// ---- Tactical depth: vocabulary roots (designers author leaf children in their tag config) ----
+
+	/** Root of the cover-type vocabulary (e.g. AI.Cover.Full / AI.Cover.Half). */
+	DESIGNPATTERNSAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(AI_Cover);
+
+	/** Root of the group-tactic vocabulary (e.g. AI.Tactic.Advance / AI.Tactic.Suppress). */
+	DESIGNPATTERNSAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(AI_Tactic);
+
+	/** Root of the combat-stance vocabulary used by cover/positioning (e.g. AI.Stance.Peek). */
+	DESIGNPATTERNSAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(AI_Stance);
+
+	/** Root of the spatial-query purpose vocabulary (e.g. AI.Query.Purpose.Cover / .Flank). */
+	DESIGNPATTERNSAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(AI_Query_Purpose);
 }

@@ -2,6 +2,7 @@
 
 #include "Squad/AI_SquadSubsystem.h"
 #include "Squad/AI_SquadCarrier.h"
+#include "Squad/AI_FormationDataAsset.h"
 #include "Settings/AI_DeveloperSettings.h"
 #include "DesignPatternsAINativeTags.h"
 #include "AI_BusPayloads.h"
@@ -143,6 +144,23 @@ FTransform UAI_SquadSubsystem::GetFormationSlot(FSeam_EntityId Member) const
 		return Carrier->GetAbsoluteSlot(Member);
 	}
 	return FTransform::Identity;
+}
+
+void UAI_SquadSubsystem::GetMembers(TArray<FSeam_EntityId>& OutMembers) const
+{
+	// Append the active squad's roster member ids (does not clear OutMembers — callers may accumulate).
+	if (const AAI_SquadCarrier* Carrier = FindCarrier(ActiveSquadId))
+	{
+		const TArray<FAI_SquadMember>& Roster = Carrier->GetMembers();
+		OutMembers.Reserve(OutMembers.Num() + Roster.Num());
+		for (const FAI_SquadMember& Row : Roster)
+		{
+			if (Row.MemberId.IsValid())
+			{
+				OutMembers.Add(Row.MemberId);
+			}
+		}
+	}
 }
 
 //~ Lifecycle -----------------------------------------------------------------------------------
@@ -313,8 +331,33 @@ bool UAI_SquadSubsystem::RebuildFormation(FGuid SquadId)
 	const int32 Count = Members.Num();
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
-		Carrier->AssignSlot(Members[Index].MemberId, ComputeGridSlot(Index, Count));
+		// ComputeAssetSlot uses the assigned formation asset when present, else falls back to the grid
+		// (byte-identical to ComputeGridSlot when no asset is assigned — the additive path).
+		Carrier->AssignSlot(Members[Index].MemberId, ComputeAssetSlot(SquadId, Index, Count));
 	}
+	return true;
+}
+
+bool UAI_SquadSubsystem::AssignFormationAsset(FGuid SquadId, UAI_FormationDataAsset* Formation)
+{
+	if (!HasWorldAuthority())
+	{
+		return false;
+	}
+	if (!FindCarrier(SquadId))
+	{
+		return false;
+	}
+	if (Formation)
+	{
+		FormationAssets.Add(SquadId, Formation);
+	}
+	else
+	{
+		FormationAssets.Remove(SquadId); // revert to fallback grid
+	}
+	// Re-lay out immediately with the new shape.
+	RebuildFormation(SquadId);
 	return true;
 }
 
@@ -354,6 +397,19 @@ FTransform UAI_SquadSubsystem::ComputeGridSlot(int32 Index, int32 Count) const
 		static_cast<float>(Col) * Spacing - HalfWidth,
 		0.f);
 	return FTransform(Offset);
+}
+
+FTransform UAI_SquadSubsystem::ComputeAssetSlot(const FGuid& SquadId, int32 Index, int32 Count) const
+{
+	if (const TObjectPtr<UAI_FormationDataAsset>* Found = FormationAssets.Find(SquadId))
+	{
+		if (const UAI_FormationDataAsset* Asset = Found->Get())
+		{
+			return Asset->GetSlotTransform(Index, Count);
+		}
+	}
+	// No asset assigned: identical behaviour to the shipped fallback grid.
+	return ComputeGridSlot(Index, Count);
 }
 
 //~ Shared blackboard via the World hub ---------------------------------------------------------

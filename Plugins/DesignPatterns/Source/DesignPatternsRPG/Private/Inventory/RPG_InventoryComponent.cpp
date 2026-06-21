@@ -121,7 +121,7 @@ int32 URPG_InventoryComponent::AddItem(FGameplayTag ItemTag, int32 Count)
 	return Count;
 }
 
-int32 URPG_InventoryComponent::RemoveItem(FGameplayTag ItemTag, int32 Count)
+int32 URPG_InventoryComponent::RemoveItem_Implementation(FGameplayTag ItemTag, int32 Count)
 {
 	// AUTHORITY GUARD.
 	if (!GetOwner() || !GetOwner()->HasAuthority())
@@ -182,7 +182,7 @@ int32 URPG_InventoryComponent::MoveItem(URPG_InventoryComponent* Target, FGamepl
 	}
 
 	// Only remove what we actually hold, then add exactly that to the target.
-	const int32 Removed = RemoveItem(ItemTag, Count);
+	const int32 Removed = RemoveItem_Implementation(ItemTag, Count);
 	if (Removed > 0)
 	{
 		Target->AddItem(ItemTag, Removed);
@@ -190,7 +190,7 @@ int32 URPG_InventoryComponent::MoveItem(URPG_InventoryComponent* Target, FGamepl
 	return Removed;
 }
 
-int32 URPG_InventoryComponent::GetItemCount(FGameplayTag ItemTag) const
+int32 URPG_InventoryComponent::GetItemCount_Implementation(FGameplayTag ItemTag) const
 {
 	int32 Total = 0;
 	for (const FRPG_InventoryEntry& Entry : Inventory.Entries)
@@ -201,6 +201,17 @@ int32 URPG_InventoryComponent::GetItemCount(FGameplayTag ItemTag) const
 		}
 	}
 	return Total;
+}
+
+bool URPG_InventoryComponent::HasItem_Implementation(FGameplayTag ItemTag, int32 Count) const
+{
+	return GetItemCount_Implementation(ItemTag) >= Count;
+}
+
+bool URPG_InventoryComponent::CanRemove_Implementation(FGameplayTag ItemTag, int32 Count) const
+{
+	// Read-only pre-check for trade/escrow flows: do we currently hold enough to remove Count?
+	return Count > 0 && GetItemCount_Implementation(ItemTag) >= Count;
 }
 
 TArray<FRPG_ItemStack> URPG_InventoryComponent::GetAllStacks() const

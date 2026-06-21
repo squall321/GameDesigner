@@ -34,8 +34,14 @@ namespace NarrativeStoryNativeTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Service_Narrative_StoryDirector, "DP.Service.Narrative.StoryDirector",
 		"Service key under which the story director registers itself for direct typed resolution.");
 
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Service_Narrative_Reputation, "DP.Service.Narrative.Reputation",
+		"Service key under which UNarr_ReputationSubsystem registers as the ISeam_Reputation owner.");
+
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Persist_Narrative_Story, "DP.Persist.Narrative.Story",
 		"Persistence-kind tag for the story director's beat/arc tracking record.");
+
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Persist_Narrative_Reputation, "DP.Persist.Narrative.Reputation",
+		"Persistence-kind tag for the reputation subsystem's standing record.");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(InputMode_Cutscene, "DP.InputMode.Cutscene",
 		"Input-mode tag the sequence director pushes onto ISeam_InputModeArbiter while a cutscene plays.");

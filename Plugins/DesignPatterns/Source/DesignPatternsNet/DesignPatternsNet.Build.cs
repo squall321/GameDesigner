@@ -15,8 +15,9 @@ public class DesignPatternsNet : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"GameplayTags",
-			"NetCore",          // FLifetimeProperty / push-model replication helpers
-			"DesignPatterns"    // core: subsystem bases, log, native tag roots we build on
+			"NetCore",          // FLifetimeProperty / push-model replication helpers / FFastArraySerializer
+			"DesignPatterns",   // core: subsystem bases, log, service locator, native tag roots we build on
+			"DesignPatternsSeams" // shared seams: HitRewindTarget, LobbyRead, NetRelevancyHint, ScoreSource, TeamAffinity, NetValue, EntityId
 		});
 
 		// Online session support is OPTIONAL. We only link the Online modules when they are

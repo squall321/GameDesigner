@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
+#include "Stats/Seam_StatModifierSink.h"
 #include "RPG_StatsComponent.generated.h"
 
 class UCurveFloat;
@@ -71,7 +72,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FRPG_OnLevelUp, URPG_StatsComponent
  * required to advance FROM that level); when absent a quadratic fallback is used.
  */
 UCLASS(ClassGroup = (DesignPatternsRPG), meta = (BlueprintSpawnableComponent))
-class DESIGNPATTERNSRPG_API URPG_StatsComponent : public UActorComponent
+class DESIGNPATTERNSRPG_API URPG_StatsComponent : public UActorComponent, public ISeam_StatModifierSink
 {
 	GENERATED_BODY()
 
@@ -81,6 +82,22 @@ public:
 	//~ Begin UActorComponent
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	//~ End UActorComponent
+
+	//~ Begin ISeam_StatModifierSink
+	/**
+	 * AUTHORITY-ONLY: grant a batch of gameplay-derived buff modifiers under SourceTag. Backed by the same
+	 * authority-only Modifiers list that AddModifier/RemoveModifiersFromSource use.
+	 */
+	virtual void AddModifierBatch_Implementation(FGameplayTag SourceTag, const TArray<FSeam_StatMod>& Mods) override;
+	/** AUTHORITY-ONLY: remove the authority-granted batch under SourceTag. */
+	virtual void RemoveModifiersFromSource_Implementation(FGameplayTag SourceTag) override;
+	/**
+	 * LOCAL-DERIVED, NO authority guard: replace the derived modifier group for SourceTag (equipment/affix/
+	 * set/encumbrance/status). Stored in a separate DerivedModifiers list that folds into derived stats on
+	 * BOTH server and clients, so equipment/encumbrance contributions never desync.
+	 */
+	virtual void SetDerivedModifierGroup_Implementation(FGameplayTag SourceTag, const TArray<FSeam_StatMod>& Mods) override;
+	//~ End ISeam_StatModifierSink
 
 	/** Set the base (pre-modifier) value of an attribute. AUTHORITY ONLY. */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Stats")
@@ -102,9 +119,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|Stats")
 	void AddModifier(const FRPG_StatModifier& Modifier);
 
-	/** Remove every modifier tagged with SourceTag. AUTHORITY ONLY. Recomputes affected attributes. */
-	UFUNCTION(BlueprintCallable, Category = "RPG|Stats")
-	void RemoveModifiersFromSource(FGameplayTag SourceTag);
+	// NOTE: RemoveModifiersFromSource(FGameplayTag) is provided by the implemented ISeam_StatModifierSink
+	// (a BlueprintNativeEvent of the same name and signature). Its authority-only removal logic lives in
+	// RemoveModifiersFromSource_Implementation below, preserving the original callable signature.
 
 	/** Current character level (replicated). */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Stats")
@@ -155,9 +172,19 @@ private:
 	UPROPERTY()
 	TMap<FGameplayTag, float> BaseAttributes;
 
-	/** Active modifiers (locally derived; not replicated). */
+	/** Authority-granted modifiers (gameplay buffs). Granted server-side; not replicated as array data. */
 	UPROPERTY()
 	TArray<FRPG_StatModifier> Modifiers;
+
+	/**
+	 * LOCALLY-DERIVED modifier groups (equipment affixes, set bonuses, encumbrance, status effects),
+	 * recomputed from already-replicated state on BOTH server and clients via the seam's
+	 * SetDerivedModifierGroup path. Kept separate from Modifiers so the authority guard on the gameplay-buff
+	 * path never strips equipment/encumbrance contributions on clients. Not replicated (each machine derives
+	 * the same groups). Keyed by SourceTag so a whole group is replaced atomically.
+	 */
+	UPROPERTY()
+	TArray<FRPG_StatModifier> DerivedModifiers;
 
 	/** Replicated character level. */
 	UPROPERTY(ReplicatedUsing = OnRep_Level)

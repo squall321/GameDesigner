@@ -1,10 +1,27 @@
 // Copyright DesignPatterns plugin. All Rights Reserved.
 
 #include "Stats/RPG_StatsComponent.h"
+#include "Stats/Seam_StatMod.h"
 #include "Core/DPLog.h"
 #include "Curves/CurveFloat.h"
 #include "GameFramework/Actor.h"
 #include "Net/UnrealNetwork.h"
+
+namespace
+{
+	/** Map a seam-neutral modifier to the RPG concrete modifier (Op is the integer ERPG_StatModOp). */
+	FRPG_StatModifier SeamModToRPG(const FSeam_StatMod& In, const FGameplayTag& SourceTag)
+	{
+		FRPG_StatModifier Mod;
+		Mod.AttributeTag = In.AttributeTag;
+		Mod.Op = static_cast<ERPG_StatModOp>(In.Op);
+		Mod.Magnitude = (In.Magnitude.Type == ESeam_NetValueType::Float)
+			? static_cast<float>(In.Magnitude.FloatValue)
+			: 0.f;
+		Mod.SourceTag = SourceTag;
+		return Mod;
+	}
+}
 
 URPG_StatsComponent::URPG_StatsComponent()
 {
@@ -47,28 +64,36 @@ float URPG_StatsComponent::ComputeDerived(const FGameplayTag& AttributeTag) cons
 	bool bHasOverride = false;
 	float OverrideValue = 0.f;
 
-	for (const FRPG_StatModifier& Mod : Modifiers)
+	// Fold BOTH the authority-granted Modifiers and the locally-derived DerivedModifiers (equipment/affix/
+	// set/encumbrance/status). Both contribute identically; the separation only exists so the derived path
+	// can run without an authority guard, never funnelling through the authority-only AddModifier.
+	auto FoldList = [&](const TArray<FRPG_StatModifier>& List)
 	{
-		if (Mod.AttributeTag != AttributeTag)
+		for (const FRPG_StatModifier& Mod : List)
 		{
-			continue;
+			if (Mod.AttributeTag != AttributeTag)
+			{
+				continue;
+			}
+			switch (Mod.Op)
+			{
+			case ERPG_StatModOp::Additive:
+				Value += Mod.Magnitude;
+				break;
+			case ERPG_StatModOp::Multiplicative:
+				MultiplierAccum *= (1.f + Mod.Magnitude);
+				break;
+			case ERPG_StatModOp::Override:
+				bHasOverride = true;
+				OverrideValue = Mod.Magnitude;
+				break;
+			default:
+				break;
+			}
 		}
-		switch (Mod.Op)
-		{
-		case ERPG_StatModOp::Additive:
-			Value += Mod.Magnitude;
-			break;
-		case ERPG_StatModOp::Multiplicative:
-			MultiplierAccum *= (1.f + Mod.Magnitude);
-			break;
-		case ERPG_StatModOp::Override:
-			bHasOverride = true;
-			OverrideValue = Mod.Magnitude;
-			break;
-		default:
-			break;
-		}
-	}
+	};
+	FoldList(Modifiers);
+	FoldList(DerivedModifiers);
 
 	if (bHasOverride)
 	{
@@ -103,9 +128,10 @@ void URPG_StatsComponent::AddModifier(const FRPG_StatModifier& Modifier)
 	NotifyAttributeChanged(Modifier.AttributeTag);
 }
 
-void URPG_StatsComponent::RemoveModifiersFromSource(FGameplayTag SourceTag)
+void URPG_StatsComponent::RemoveModifiersFromSource_Implementation(FGameplayTag SourceTag)
 {
-	// AUTHORITY GUARD: modifiers are granted by server-authoritative sources (equipment/buffs).
+	// AUTHORITY GUARD: the authority-granted Modifiers list is server-owned. (This is the seam's
+	// authority-only removal path, and also the original public RemoveModifiersFromSource entry point.)
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
 		return;
@@ -129,6 +155,79 @@ void URPG_StatsComponent::RemoveModifiersFromSource(FGameplayTag SourceTag)
 	{
 		return Mod.SourceTag == SourceTag;
 	});
+
+	for (const FGameplayTag& AttributeTag : Affected)
+	{
+		NotifyAttributeChanged(AttributeTag);
+	}
+}
+
+void URPG_StatsComponent::AddModifierBatch_Implementation(FGameplayTag SourceTag, const TArray<FSeam_StatMod>& Mods)
+{
+	// AUTHORITY GUARD: gameplay-granted buffs are server-authoritative (matches AddModifier).
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+	if (!SourceTag.IsValid())
+	{
+		return;
+	}
+
+	// Replace any existing authority batch under this source, then add the new one.
+	Execute_RemoveModifiersFromSource(this, SourceTag);
+
+	TSet<FGameplayTag> Affected;
+	for (const FSeam_StatMod& SeamMod : Mods)
+	{
+		const FRPG_StatModifier Mod = SeamModToRPG(SeamMod, SourceTag);
+		if (!Mod.AttributeTag.IsValid())
+		{
+			continue;
+		}
+		Modifiers.Add(Mod);
+		Affected.Add(Mod.AttributeTag);
+	}
+	for (const FGameplayTag& AttributeTag : Affected)
+	{
+		NotifyAttributeChanged(AttributeTag);
+	}
+}
+
+void URPG_StatsComponent::SetDerivedModifierGroup_Implementation(FGameplayTag SourceTag, const TArray<FSeam_StatMod>& Mods)
+{
+	// NO AUTHORITY GUARD: this is pure local derivation from already-replicated state and MUST run on
+	// server AND clients, or equipment/affix/set/encumbrance/status modifiers would silently desync.
+	if (!SourceTag.IsValid())
+	{
+		return;
+	}
+
+	// Gather attributes affected by the OUTGOING group (so removals re-notify even if the new group is empty).
+	TSet<FGameplayTag> Affected;
+	for (const FRPG_StatModifier& Mod : DerivedModifiers)
+	{
+		if (Mod.SourceTag == SourceTag)
+		{
+			Affected.Add(Mod.AttributeTag);
+		}
+	}
+
+	// Replace the whole group for this source atomically.
+	DerivedModifiers.RemoveAll([&SourceTag](const FRPG_StatModifier& Mod)
+	{
+		return Mod.SourceTag == SourceTag;
+	});
+	for (const FSeam_StatMod& SeamMod : Mods)
+	{
+		const FRPG_StatModifier Mod = SeamModToRPG(SeamMod, SourceTag);
+		if (!Mod.AttributeTag.IsValid())
+		{
+			continue;
+		}
+		DerivedModifiers.Add(Mod);
+		Affected.Add(Mod.AttributeTag);
+	}
 
 	for (const FGameplayTag& AttributeTag : Affected)
 	{

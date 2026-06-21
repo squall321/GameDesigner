@@ -6,6 +6,8 @@
 #include "Components/ActorComponent.h"
 #include "Net/Serialization/FastArraySerializer.h"
 #include "GameplayTagContainer.h"
+#include "Inventory/Seam_ItemQuery.h"
+#include "Economy/Seam_TradableInventory.h"
 #include "RPG_InventoryComponent.generated.h"
 
 class URPG_InventoryComponent;
@@ -101,7 +103,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRPG_OnInventoryChanged, URPG_Invent
  * MaxStackSize (resolved from the core data registry), overflowing into additional stacks.
  */
 UCLASS(ClassGroup = (DesignPatternsRPG), meta = (BlueprintSpawnableComponent))
-class DESIGNPATTERNSRPG_API URPG_InventoryComponent : public UActorComponent
+class DESIGNPATTERNSRPG_API URPG_InventoryComponent : public UActorComponent,
+	public ISeam_ItemQuery,
+	public ISeam_TradableInventory
 {
 	GENERATED_BODY()
 
@@ -120,12 +124,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|Inventory")
 	int32 AddItem(FGameplayTag ItemTag, int32 Count = 1);
 
-	/**
-	 * Remove up to Count units of ItemTag across its stacks. AUTHORITY ONLY.
-	 * Returns the number of units actually removed (<= Count, capped by what was present).
-	 */
-	UFUNCTION(BlueprintCallable, Category = "RPG|Inventory")
-	int32 RemoveItem(FGameplayTag ItemTag, int32 Count = 1);
+	// RemoveItem(FGameplayTag, int32) is provided by the implemented ISeam_TradableInventory
+	// (BlueprintNativeEvent of the same name and signature); its authority-only logic lives in
+	// RemoveItem_Implementation below. Callable name/signature are preserved.
 
 	/**
 	 * Move up to Count units of ItemTag from this inventory into Target. AUTHORITY ONLY
@@ -134,13 +135,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|Inventory")
 	int32 MoveItem(URPG_InventoryComponent* Target, FGameplayTag ItemTag, int32 Count = 1);
 
-	/** Total units of ItemTag across all stacks (read-only; safe on clients). */
-	UFUNCTION(BlueprintCallable, Category = "RPG|Inventory")
-	int32 GetItemCount(FGameplayTag ItemTag) const;
-
-	/** True if the inventory holds at least Count units of ItemTag. */
-	UFUNCTION(BlueprintCallable, Category = "RPG|Inventory")
-	bool HasItem(FGameplayTag ItemTag, int32 Count = 1) const { return GetItemCount(ItemTag) >= Count; }
+	// GetItemCount(FGameplayTag) and HasItem(FGameplayTag, int32) are provided by the implemented
+	// ISeam_ItemQuery (BlueprintNativeEvents of the same names/signatures). Read-only; safe on clients.
+	// Their logic lives in GetItemCount_Implementation / HasItem_Implementation below.
 
 	/** Snapshot of all stacks (read-only copy; safe on clients). */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Inventory")
@@ -164,6 +161,20 @@ public:
 
 	/** Called by the fast-array entry callbacks on clients to surface a content change. */
 	void HandleReplicatedChange();
+
+	//~ Begin ISeam_ItemQuery
+	/** Total units of ItemTag across all stacks (read-only; safe on clients). */
+	virtual int32 GetItemCount_Implementation(FGameplayTag ItemTag) const override;
+	/** True if the inventory holds at least Count units of ItemTag. */
+	virtual bool HasItem_Implementation(FGameplayTag ItemTag, int32 Count) const override;
+	//~ End ISeam_ItemQuery
+
+	//~ Begin ISeam_TradableInventory
+	/** True if Count units of ItemTag could be removed right now (read-only). */
+	virtual bool CanRemove_Implementation(FGameplayTag ItemTag, int32 Count) const override;
+	/** Remove up to Count units of ItemTag; returns the number actually removed. AUTHORITY ONLY. */
+	virtual int32 RemoveItem_Implementation(FGameplayTag ItemTag, int32 Count) override;
+	//~ End ISeam_TradableInventory
 
 private:
 	/** Replicated item stacks. */

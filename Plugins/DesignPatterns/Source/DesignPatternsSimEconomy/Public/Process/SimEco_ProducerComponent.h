@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Process/SimEco_ProcessComponentBase.h"
 #include "Seams/SimEco_ResourceProducer.h"
+#include "Economy/Seam_ResourceProducer.h" // PROMOTED leaf seam: implemented additively below
 #include "SimEco_ProducerComponent.generated.h"
 
 /**
@@ -20,18 +21,24 @@ UCLASS(ClassGroup = (DesignPatternsSimEconomy), meta = (BlueprintSpawnableCompon
 class DESIGNPATTERNSSIMECONOMY_API USimEco_ProducerComponent
 	: public USimEco_ProcessComponentBase
 	, public ISimEco_ResourceProducer
+	, public ISeam_ResourceProducer // PROMOTED: also presents through the leaf Seams interface (additive)
 {
 	GENERATED_BODY()
 
 public:
-	//~ Begin ISimEco_ResourceProducer
+	// NOTE: ISimEco_ResourceProducer and the PROMOTED ISeam_ResourceProducer declare identical method
+	// signatures, so a SINGLE set of *_Implementation overrides satisfies BOTH interface vtables. The
+	// overrides below are shared; cross-module callers resolve via TScriptInterface<ISeam_ResourceProducer>
+	// without depending on DesignPatternsSimEconomy.
+
+	//~ Begin ISimEco_ResourceProducer / ISeam_ResourceProducer (shared overrides)
 	virtual FGameplayTag GetActiveProcessTag_Implementation() const override { return GetProcessTag(); }
 	virtual bool IsProducing_Implementation() const override { return IsRunning(); }
 	virtual float GetProductionProgress_Implementation() const override { return GetCycleProgress(); }
 	virtual void GetExpectedOutputs_Implementation(TArray<FGameplayTag>& OutCommodities, TArray<float>& OutQuantities) const override;
 	virtual bool SetActiveProcess_Implementation(FGameplayTag ProcessTag) override { return StartProcess(ProcessTag); }
 	virtual void CancelProduction_Implementation() override { CancelProcess(); }
-	//~ End ISimEco_ResourceProducer
+	//~ End shared producer overrides
 
 protected:
 	//~ Begin USimEco_ProcessComponentBase

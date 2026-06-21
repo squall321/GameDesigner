@@ -19,8 +19,10 @@ public class DesignPatternsCombat : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"GameplayTags",
-			"NetCore",          // push-model / replication helpers for combat components
-			"DesignPatterns"    // core: subsystem bases, message bus, accessors, native tags
+			"NetCore",          // push-model / replication + FFastArraySerializer for the status-stack array
+			"DesignPatterns",   // core: subsystem bases, message bus, accessors, native tags, action component
+			"DesignPatternsSeams" // shared cross-module seams: StatModifierSink, DamageReactor, HitRewindTarget,
+			                      // NeedProvider, TeamAffinity, EntityIdentity (TScriptInterface in public headers)
 		});
 	}
 }

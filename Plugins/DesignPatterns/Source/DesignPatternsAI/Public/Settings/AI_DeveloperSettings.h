@@ -98,6 +98,56 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category = "Spawn|Fallback", meta = (ClampMin = "0.0", ClampMax = "10000.0", UIMin = "0.0", UIMax = "2000.0"))
 	float FallbackRegionRadius = 300.f;
 
+	// ---- Tactical depth: spatial query ----
+
+	/**
+	 * Default grid spacing (world units) the query subsystem uses when a UAI_EnvQuery leaves GridSpacing
+	 * at/below zero. Safety net only; queries normally carry their own spacing.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Query", meta = (ClampMin = "1.0", ClampMax = "2000.0", UIMin = "25.0", UIMax = "500.0"))
+	float DefaultQueryGridSpacing = 100.f;
+
+	/**
+	 * Hard ceiling on candidate points any single query may generate/score, regardless of a query asset's
+	 * MaxItems, to protect the frame from a mis-authored huge grid.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Query", meta = (ClampMin = "1", ClampMax = "16384", UIMin = "64", UIMax = "4096"))
+	int32 MaxQueryItemsHardCap = 1024;
+
+	// ---- Tactical depth: cover ----
+
+	/**
+	 * Default search radius (world units) the cover component uses when its own SearchRadius resolves to
+	 * zero. Bounds how far an agent will look for cover.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Cover", meta = (ClampMin = "0.0", ClampMax = "10000.0", UIMin = "200.0", UIMax = "3000.0"))
+	float DefaultCoverSearchRadius = 1500.f;
+
+	/**
+	 * Weight applied to a cover point's protection-direction quality versus its distance to the seeker when
+	 * scoring cover (0 = distance only, 1 = protection only). Pure scoring tunable.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Cover", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float CoverProtectionWeight = 0.6f;
+
+	// ---- Tactical depth: positioning ----
+
+	/**
+	 * Default preferred engagement range (world units) positioning strategies fall back to when their own
+	 * PreferredRange resolves to zero. Genre-neutral.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Positioning", meta = (ClampMin = "1.0", ClampMax = "10000.0", UIMin = "100.0", UIMax = "2000.0"))
+	float DefaultPreferredRange = 400.f;
+
+	// ---- Tactical depth: patrol ----
+
+	/**
+	 * Default acceptance radius (world units) a patrol component uses to consider a waypoint reached when
+	 * its own AcceptanceRadius resolves to zero.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Patrol", meta = (ClampMin = "1.0", ClampMax = "2000.0", UIMin = "25.0", UIMax = "300.0"))
+	float DefaultPatrolAcceptanceRadius = 100.f;
+
 	/** Convenience accessor (never null in a running game; the CDO carries the config). */
 	static const UAI_DeveloperSettings* Get();
 };
