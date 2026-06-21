@@ -255,7 +255,10 @@ def check_modules():
                 "DesignPatternsNarrative", "DesignPatternsHUD",
                 "DesignPatternsAnalytics", "DesignPatternsLocalization",
                 "DesignPatternsLevelDirector", "DesignPatternsModContent",
-                "DesignPatternsModContentEditor"}
+                "DesignPatternsModContentEditor",
+                "DesignPatternsProgression", "DesignPatternsSkillTree", "DesignPatternsGameMode",
+                "DesignPatternsGameFlow", "DesignPatternsSaveSystem", "DesignPatternsSaveSystemUI",
+                "DesignPatternsWorldSystems", "DesignPatternsTutorial", "DesignPatternsReplay"}
     for mod in expected:
         n = impls.get(mod, 0)
         if n == 0:
