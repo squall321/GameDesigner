@@ -205,23 +205,34 @@ ESimEco_MerchantResult USimEco_MerchantTradeComponent::ExecuteBuy(AActor* Buyer,
 		return ESimEco_MerchantResult::NoInventory;
 	}
 
-	// --- Atomic commit, in order, with rollback on the delivery step ---
+	// --- Atomic commit, in order, with rollback on each step ---
+	// CLAIM STOCK FIRST so two concurrent buys of the same limited stock cannot both pass the pre-check
+	// and over-sell: ConsumeStockForSale is the authoritative claim. If it cannot fulfil the full count
+	// (another buy beat us to it) we fail without touching the wallet.
+	const int32 StockClaimed = Merchant->ConsumeStockForSale(ItemTag, ClampedCount);
+	if (StockClaimed < ClampedCount)
+	{
+		if (StockClaimed > 0)
+		{
+			Merchant->AddStockFromPurchase(ItemTag, StockClaimed); // return the partial claim
+		}
+		return ESimEco_MerchantResult::OutOfStock;
+	}
+
 	if (!ISeam_WalletAuthority::Execute_Spend(WalletObj, Currency, TotalPrice))
 	{
+		Merchant->AddStockFromPurchase(ItemTag, ClampedCount); // roll the stock claim back
 		return ESimEco_MerchantResult::CannotAfford;
 	}
 
 	const int32 Granted = ISeam_PurchaseTarget::Execute_GrantItem(InvObj, ItemTag, ClampedCount);
 	if (Granted < ClampedCount)
 	{
-		// Roll back: refund the full price (best-effort) and undo any partial grant is the inventory's
-		// concern; we refund what we took. Stock was not yet decremented.
+		// Delivery failed: refund the price and return the claimed stock so nothing is lost or duped.
 		ISeam_WalletAuthority::Execute_Grant(WalletObj, Currency, TotalPrice);
+		Merchant->AddStockFromPurchase(ItemTag, ClampedCount);
 		return ESimEco_MerchantResult::TransferFailed;
 	}
-
-	// Currency + item moved; now decrement merchant stock (authority).
-	Merchant->ConsumeStockForSale(ItemTag, ClampedCount);
 
 	OutTotalPrice = TotalPrice;
 

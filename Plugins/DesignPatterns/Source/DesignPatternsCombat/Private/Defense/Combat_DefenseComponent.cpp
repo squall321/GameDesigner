@@ -155,10 +155,12 @@ bool UCombat_DefenseComponent::QueryIncoming(const FCombat_HitResult& Hit, float
 	OutInvulnerable = false;
 	OutParry = false;
 
-	// Dodge i-frames negate the hit entirely.
+	// Dodge i-frames negate the hit entirely. Set chip to 0 as well as the invulnerable flag so a caller
+	// that only reads OutChipFraction (without checking OutInvulnerable) still applies zero damage.
 	if (DefenseState == ECombat_DefenseState::Dodging && IsWithinDodgeIFrames())
 	{
 		OutInvulnerable = true;
+		OutChipFraction = 0.f;
 		return true;
 	}
 

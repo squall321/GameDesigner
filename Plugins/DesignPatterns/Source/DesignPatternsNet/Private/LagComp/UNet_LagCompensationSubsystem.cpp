@@ -17,6 +17,16 @@ void UNet_LagCompensationSubsystem::Initialize(FSubsystemCollectionBase& Collect
 
 	RegisterSelfAsService();
 
+	// SECURITY: a generous rewind window lets a high-latency (or spoofing) shooter rewind targets far into
+	// the past and "hit" them where they no longer are. 300ms covers typical RTT + margin; warn above it so
+	// a project that raised MaxRewindMs unsafely sees it. (The per-shot rewind is still hard-clamped.)
+	if (MaxRewindMs > 300)
+	{
+		UE_LOG(LogDP, Warning,
+			TEXT("[LagComp] MaxRewindMs=%d exceeds the recommended 300ms; large rewind windows widen the ")
+			TEXT("hit-rewind exploit surface. Tune to your worst-case RTT + a small margin."), MaxRewindMs);
+	}
+
 	// Capture runs off a frame ticker (not actor tick) so it records even when no actor drives it. The
 	// capture itself is authority-gated and paused-aware inside CaptureFrame.
 	CaptureTickHandle = FTSTicker::GetCoreTicker().AddTicker(

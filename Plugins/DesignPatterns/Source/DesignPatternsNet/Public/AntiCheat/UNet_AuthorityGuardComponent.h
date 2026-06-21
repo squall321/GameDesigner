@@ -70,9 +70,13 @@ public:
 	/**
 	 * Half-extent (uu) of the allowed world bound centred on the origin. An owner outside this cube is
 	 * treated as teleported out of bounds. 0 disables the position check (only speed is checked).
+	 *
+	 * Defaults to a generous 10 km half-extent so the check is ENABLED by default — it catches NaN /
+	 * absurd-teleport exploits without false-positiving normal play. Projects with a larger playable area
+	 * MUST raise this to their world size with margin; projects that manage bounds elsewhere may set 0.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DesignPatterns|Net|AntiCheat", meta = (ClampMin = "0.0"))
-	float WorldBoundHalfExtent = 0.f;
+	float WorldBoundHalfExtent = 1000000.f;
 
 private:
 	/** One token-bucket entry per request tag. */

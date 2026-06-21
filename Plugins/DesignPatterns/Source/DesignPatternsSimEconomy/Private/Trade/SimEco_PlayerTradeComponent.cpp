@@ -268,6 +268,17 @@ void USimEco_PlayerTradeComponent::TryCommit()
 	{
 		return;
 	}
+
+	// MUTUAL-EXCLUSION GATE: both partners' Server_Confirm RPCs can each invoke TryCommit on the same
+	// server tick while Phase is still Negotiating. Without this guard both would pass the confirmation
+	// check below and BOTH would deliver the escrow — duplicating items/currency. Only the first call to
+	// flip Phase out of Negotiating proceeds; the second returns immediately. (Phase is server-side state;
+	// the COND_OwnerOnly replication of it is irrelevant to this server-only gate.)
+	if (Phase != ESimEco_TradePhase::Negotiating)
+	{
+		return;
+	}
+
 	USimEco_PlayerTradeComponent* P = Partner.Get();
 	if (!(bConfirmed && P->bConfirmed))
 	{

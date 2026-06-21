@@ -22,9 +22,9 @@ bool UNet_AuthorityGuardComponent::ConsumeRateToken(const FGameplayTag& RequestT
 	const double Window = (double)FMath::Max(0.05f, RateWindowSeconds);
 
 	FRateBucket& Bucket = RateBuckets.FindOrAdd(RequestTag);
-	if ((Now - Bucket.WindowStart) > Window)
+	if ((Now - Bucket.WindowStart) >= Window)
 	{
-		// Window elapsed: reset.
+		// Window elapsed (>= so a request landing exactly on the boundary starts a fresh window): reset.
 		Bucket.WindowStart = Now;
 		Bucket.Count = 0;
 	}

@@ -355,32 +355,34 @@ void USimEco_AuctionSubsystem::SettleLot(int32 LotId, bool bExpired)
 		return;
 	}
 
-	const bool bHasWinner = !bExpired && E->HighBidder.IsValid() && E->EscrowedCurrency > 0;
+	// Capture the actors and amount ONCE up front. A sale requires BOTH the winner and the seller to still
+	// be valid at settlement: otherwise granting goods to one side while the other's payment/refund is
+	// skipped would silently destroy escrowed value (the escrow record is deleted at the end with no
+	// recovery). If either party disconnected we fall through to the return/refund path instead.
+	AActor* Winner = E->HighBidder.Get();
+	AActor* Seller = E->Seller.Get();
+	const int64 EscrowedCurrency = E->EscrowedCurrency;
+	const bool bHasWinner = !bExpired && Winner && Seller && EscrowedCurrency > 0;
 
 	if (bHasWinner)
 	{
-		// Deliver goods to the winner; pay escrowed currency to the seller.
-		if (AActor* Winner = E->HighBidder.Get())
+		// Deliver goods to the winner; pay escrowed currency to the seller. Both are valid (checked above).
+		if (UObject* WinnerInv = ResolveSeamObj(Winner, USeam_PurchaseTarget::StaticClass()))
 		{
-			if (UObject* WinnerInv = ResolveSeamObj(Winner, USeam_PurchaseTarget::StaticClass()))
-			{
-				ISeam_PurchaseTarget::Execute_GrantItem(WinnerInv, E->ItemTag, E->Quantity);
-			}
+			ISeam_PurchaseTarget::Execute_GrantItem(WinnerInv, E->ItemTag, E->Quantity);
 		}
-		if (AActor* Seller = E->Seller.Get())
+		if (UObject* SellerWallet = ResolveSeamObj(Seller, USeam_WalletAuthority::StaticClass()))
 		{
-			if (UObject* SellerWallet = ResolveSeamObj(Seller, USeam_WalletAuthority::StaticClass()))
-			{
-				ISeam_WalletAuthority::Execute_Grant(SellerWallet, E->CurrencyTag, E->EscrowedCurrency);
-			}
+			ISeam_WalletAuthority::Execute_Grant(SellerWallet, E->CurrencyTag, EscrowedCurrency);
 		}
 		Lot->State = ESimEco_AuctionState::Sold;
 	}
 	else
 	{
-		// Expired / no winner: refund any escrowed currency, return goods to the seller.
+		// Expired / no winner / a party left: refund any escrowed currency to the bidder and return the
+		// goods to the seller if the seller is still present.
 		RefundHighBidder(LotId);
-		if (AActor* Seller = E->Seller.Get())
+		if (Seller)
 		{
 			if (UObject* SellerInv = ResolveSeamObj(Seller, USeam_PurchaseTarget::StaticClass()))
 			{
