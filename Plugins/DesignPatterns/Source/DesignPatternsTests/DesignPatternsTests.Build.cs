@@ -20,7 +20,9 @@ public class DesignPatternsTests : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"GameplayTags",
-			"DesignPatterns"   // system under test
+			"DesignPatterns",        // core systems under test
+			"DesignPatternsSeams",   // seam value types (FSeam_NetValue)
+			"DesignPatternsProgression"  // wallet logic under test
 		});
 
 		// FInstancedStruct (used to build message payloads in the bus test) is in StructUtils on 5.3/5.4.

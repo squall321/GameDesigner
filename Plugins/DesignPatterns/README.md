@@ -71,6 +71,27 @@ Cross-cutting infrastructure. Engine-wrapping, opt-in, privacy-safe.
 | **DesignPatternsModContent** | Runtime | Mod/DLC content-pack pipeline: discover/mount/unmount packs, tag→asset override registry over the data registry, validate-before-activate | core, Seams |
 | **DesignPatternsModContentEditor** | UncookedOnly | Data-validation commandlet hook (CI) + editor validation of content packs | ModContent |
 
+### 1d. Gameplay + flow/meta layer (Wave-3)
+
+Higher-level game systems you assemble into an actual game loop. Same composition rules: built on the
+core + Seams, coupled only through seams, independently removable.
+
+| Module | Type | Purpose | Depends on |
+|---|---|---|---|
+| **DesignPatternsSkillTree** | Runtime | Skill nodes/trees, replicated learned-skill component, ability-grant adapter (via the core Action component), point sources, save | core, Seams |
+| **DesignPatternsProgression** | Runtime | Tag-keyed wallet/currency (`ISeam_Wallet`), achievements (conditions + analytics + platform bridge), shop (vendor + server-validated client) | core, Seams |
+| **DesignPatternsGameMode** | Runtime | Ruleset/win-conditions, match-state FSM, replicated score carrier (`ISeam_ScoreSource`), teams (`ISeam_TeamAffinity`), respawn, scoreboard VM | core, Seams |
+| **DesignPatternsGameFlow** | Runtime | App-flow FSM (Boot/Menu/Loading/InGame/Pause/Results), loading-screen wrapper, results VM, continue-slot | core, Seams |
+| **DesignPatternsSaveSystem** | Runtime | Named-slot manager wrapping the core save subsystem (`ISeam_SaveSlotManager`), checkpoints, rotating autosave, migration steps | core, Seams |
+| **DesignPatternsSaveSystemUI** | Runtime | The save/load slot ViewModel (isolates the UI dep so the save core builds on a dedicated server) | SaveSystem, UI |
+| **DesignPatternsWorldSystems** | Runtime | Weather state model, pooled VFX manager (`ISeam_VfxController`), possession-based rideable/mount (`ISeam_Rideable`) | core, Seams |
+| **DesignPatternsTutorial** | Runtime | Data-driven onboarding step director + contextual hints | core, Seams |
+| **DesignPatternsReplay** | Runtime | Demo-driver wrapper, event timeline, playback scrubber, spectator | core, Seams |
+
+A runnable composition of these modules lives in [`Examples/DesignPatternsSample`](../../Examples/DesignPatternsSample) —
+a minimal project whose `USampleGameInstance` wires the World hub + save slots together through public
+APIs and seams.
+
 > **Composition guarantee:** none of the high-level / reactive / infrastructure modules hard-includes
 > another sibling or any genre module. All cross-module coupling is through `DesignPatternsSeams`
 > interfaces resolved from the service locator (or off an actor) and message-bus tags. Delete any one
