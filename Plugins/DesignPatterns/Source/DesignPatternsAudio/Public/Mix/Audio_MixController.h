@@ -37,6 +37,15 @@ struct DESIGNPATTERNSAUDIO_API FAudio_ActiveMixSnapshot
 	/** Monotonic push sequence, used to break priority ties (higher = pushed later = wins). */
 	UPROPERTY()
 	int64 Sequence = 0;
+
+	/**
+	 * ADDITIVE: per-push fade-time override (seconds). < 0 means "use each submix override's own
+	 * FadeTime" (the shipped default). >= 0 overrides every blend this snapshot drives — used by the
+	 * blended dynamic-mixing path and by reverb-zone submix-effect wet-level fades. Defaulting to -1
+	 * keeps every previously-authored push byte-identical in behaviour.
+	 */
+	UPROPERTY()
+	float BlendTimeOverride = -1.f;
 };
 
 /**
@@ -89,6 +98,47 @@ public:
 	/** One-line status for the sound manager's debug string. */
 	FString GetDebugString() const;
 
+	// ------------------------------------------------------------------------------------------------
+	//  ADDITIVE deepening (dynamic mixing depth). New public API only; nothing above is changed.
+	// ------------------------------------------------------------------------------------------------
+
+	/**
+	 * Push a profile onto the stack like PushProfile, but override the FADE TIME used when this push
+	 * (or any subsequent active change it causes) applies its submix overrides. This lets a transient
+	 * priority duck (e.g. dialogue over music) blend in/out faster or slower than the profile authored.
+	 *
+	 * A negative BlendTimeOverride means "use each submix override's own FadeTime" (identical to
+	 * PushProfile). PriorityOverride behaves exactly as on PushProfile (>= 0 replaces the profile's
+	 * own Priority; < 0 keeps it).
+	 *
+	 * @return a pop handle (invalid if Profile is null), released via PopProfile.
+	 */
+	FGuid PushProfileBlended(UAudio_MixProfileDataAsset* Profile, float BlendTimeOverride, int32 PriorityOverride = -1);
+
+	/**
+	 * Collect the EFFECTIVE per-category duck multiplier currently in force, keyed by each duck rule's
+	 * target category, from the active profile. This is the data the sound manager uses to re-scale all
+	 * live voices in one pass (instead of probing GetActiveDuckVolume per category). Categories with no
+	 * active rule are omitted (callers treat an absent key as 1.0 = no duck). Cosmetic/local.
+	 */
+	void GetEffectiveDuckVolumes(TMap<FGameplayTag, float>& Out) const;
+
+protected:
+	/**
+	 * ADDITIVE extension hook. Called from RefreshActive AFTER the submix volume snapshot has been
+	 * (re)applied, with a pointer to the now-active snapshot (NULL when the stack is empty / cleared).
+	 *
+	 * The base implementation MEDIATES reverb-zone submix effects: it removes the effect chain of the
+	 * previously-active reverb profile (if the active profile changed) and adds the new active profile's
+	 * effects when it is a UAudio_ReverbMixProfileDataAsset, by calling that asset's ApplySubmixEffects
+	 * (which wraps UAudioMixerBlueprintLibrary::AddSubmixEffect / RemoveSubmixEffect). Non-reverb
+	 * profiles and an empty stack remove any lingering reverb effect. Plain mix profiles are unaffected.
+	 *
+	 * Marked virtual so a project can extend with further effect kinds. Pointer (not reference) is
+	 * deliberate so the cleared/empty state is representable as nullptr.
+	 */
+	virtual void ApplyExtraSubmixEffects(const FAudio_ActiveMixSnapshot* Active);
+
 private:
 	/** Active pushes, unordered; the active snapshot is computed by priority+sequence each change. */
 	UPROPERTY()
@@ -97,6 +147,14 @@ private:
 	/** Submixes currently overridden by the active profile (so we know what to restore on change). */
 	UPROPERTY()
 	TArray<TObjectPtr<USoundSubmix>> AppliedSubmixes;
+
+	/**
+	 * ADDITIVE: the reverb profile whose submix effect chain is currently applied (if any), tracked so
+	 * ApplyExtraSubmixEffects can REMOVE its effects when the active profile changes. Strong so it
+	 * cannot be GC'd between apply and remove. Null when no reverb effect is currently applied.
+	 */
+	UPROPERTY()
+	TObjectPtr<class UAudio_ReverbMixProfileDataAsset> AppliedReverbProfile = nullptr;
 
 	/** Index into Stack of the current active snapshot, or INDEX_NONE. */
 	int32 ActiveIndex = INDEX_NONE;

@@ -6,11 +6,15 @@
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "Seam/Cam_CameraModeProvider.h"
+#include "Camera/Seam_CinematicCameraSink.h"
 #include "Mode/Cam_CameraMode.h"
+#include "Collision/Cam_CameraCollisionProbe.h"
 #include "Cam_CameraDirectorComponent.generated.h"
 
 class UCam_CameraModeStack;
 class UCam_CameraModifier;
+class UCam_PostProcessModifier;
+class UCam_PostProcessProfile;
 class APlayerController;
 class APlayerCameraManager;
 
@@ -33,7 +37,8 @@ class APlayerCameraManager;
  * handled by the Platform module rather than reinvented here.
  */
 UCLASS(ClassGroup = "DesignPatterns", meta = (BlueprintSpawnableComponent), Blueprintable)
-class DESIGNPATTERNSCAMERA_API UCam_CameraDirectorComponent : public UActorComponent, public ICam_CameraModeProvider
+class DESIGNPATTERNSCAMERA_API UCam_CameraDirectorComponent : public UActorComponent,
+	public ICam_CameraModeProvider, public ISeam_CinematicCameraSink
 {
 	GENERATED_BODY()
 
@@ -51,6 +56,19 @@ public:
 	virtual void PopCameraMode_Implementation(FGuid RequestId) override;
 	virtual FGameplayTag GetActiveModeTag_Implementation() const override;
 	//~ End ICam_CameraModeProvider
+
+	//~ Begin ISeam_CinematicCameraSink
+	/**
+	 * Begin a cinematic override by pushing a transient fixed mode on THIS director's own stack at a
+	 * high cinematic priority, honouring the requested blend-in time. Returns the stack request id so
+	 * the caller can Update/End exactly its own override.
+	 */
+	virtual FGuid BeginCinematicOverride_Implementation(FTransform POV, float FOV, float BlendInTime) override;
+	/** Update the live override's POV/FOV (re-targets the pushed transient mode). */
+	virtual void UpdateCinematicOverride_Implementation(FGuid Handle, FTransform POV, float FOV) override;
+	/** End the override by popping its transient mode, honouring the blend-out time. */
+	virtual void EndCinematicOverride_Implementation(FGuid Handle, float BlendOutTime) override;
+	//~ End ISeam_CinematicCameraSink
 
 	/** The stack this director owns (may be null before BeginPlay). */
 	UCam_CameraModeStack* GetStack() const { return ModeStack; }
@@ -75,7 +93,47 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Input")
 	int32 LookCaptureInputPriority = 100;
 
+	/**
+	 * Optional post-evaluation collision/occlusion probe. When set, the director runs it AFTER the stack
+	 * blends and BEFORE feeding the modifier, pulling the camera off geometry and producing an occlusion
+	 * alpha. Instanced so designers compose & tune a concrete probe inline. Null = no collision handling.
+	 */
+	UPROPERTY(EditAnywhere, Instanced, Category = "Camera|Collision")
+	TObjectPtr<UCam_CameraCollisionProbe> CollisionProbe = nullptr;
+
+	/**
+	 * Optional post-process profile mapping the active mode tag -> DOF/vignette/grain. When set, the
+	 * director resolves the active mode's preset each tick and feeds it to a second installed modifier.
+	 * Soft so it does not force-load content for directors that never use it.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Camera|PostProcess")
+	TSoftObjectPtr<UCam_PostProcessProfile> PostProcessProfileOverride;
+
+	/**
+	 * When true the collision probe (if set) broadcasts FCam_OcclusionEvent on Cam.Bus.Occlusion so
+	 * project-side material fade can react. The probe itself never fades meshes.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Camera|Collision")
+	bool bBroadcastOcclusion = false;
+
+	/** Cinematic-override priority for the transient override mode pushed via ISeam_CinematicCameraSink. */
+	UPROPERTY(EditAnywhere, Category = "Camera|Cinematic")
+	int32 CinematicOverridePriority = 5000;
+
 private:
+	/** Lazily create and install the second (post-process) modifier on the camera manager. */
+	UCam_PostProcessModifier* EnsurePostProcessModifier();
+
+	/** Run the collision probe (if any) on the blended view; broadcasts occlusion if enabled. */
+	FCam_CameraView RunCollisionStage(const FCam_ViewContext& Context, const FCam_CameraView& Blended, float DeltaTime);
+
+	/** Resolve the active mode's post-process preset and feed the post-process modifier. */
+	void RunPostProcessStage();
+
+	/** Resolve the post-process profile (override soft asset). Cached after first load. */
+	UCam_PostProcessProfile* ResolvePostProcessProfile();
+
+
 	/** Resolve (and cache) the local player controller that owns this director, or null. */
 	APlayerController* ResolveOwningController() const;
 
@@ -108,6 +166,18 @@ private:
 	/** The modifier installed on the camera manager. Non-owning; the manager owns lifetime. */
 	UPROPERTY(Transient)
 	TWeakObjectPtr<UCam_CameraModifier> Modifier;
+
+	/** The second (post-process) modifier installed on the manager. Non-owning; manager owns lifetime. */
+	UPROPERTY(Transient)
+	TWeakObjectPtr<UCam_PostProcessModifier> PostProcessModifier;
+
+	/** Resolved post-process profile (loaded from PostProcessProfileOverride). Non-owning content ref. */
+	UPROPERTY(Transient)
+	TObjectPtr<UCam_PostProcessProfile> CachedPostProcessProfile = nullptr;
+
+	/** True once we attempted to resolve the post-process profile (so we only load once). */
+	UPROPERTY(Transient)
+	bool bPostProcessProfileResolved = false;
 
 	/** Cached controller (resolved lazily; revalidated each use). */
 	UPROPERTY(Transient)

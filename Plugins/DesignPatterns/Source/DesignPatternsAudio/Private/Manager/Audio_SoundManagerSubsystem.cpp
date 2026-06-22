@@ -5,6 +5,7 @@
 #include "Data/Audio_SoundBankDataAsset.h"
 #include "Mix/Audio_MixController.h"
 #include "Mix/Audio_MixProfileDataAsset.h"
+#include "Mix/Audio_DuckBusDataAsset.h"
 #include "Settings/Audio_DeveloperSettings.h"
 
 #include "Core/DPLog.h"
@@ -692,6 +693,77 @@ void UAudio_SoundManagerSubsystem::PopMixProfile(FGuid Handle)
 	{
 		RefreshCategoryVoiceVolumes(Cat);
 	}
+}
+
+// =====================================================================================================
+// ADDITIVE deepening — reverb zones + dynamic mixing depth (duck buses)
+// =====================================================================================================
+
+FGuid UAudio_SoundManagerSubsystem::PushMixProfileAssetBlended(UAudio_MixProfileDataAsset* Profile, float BlendTimeSeconds, int32 PriorityOverride)
+{
+	if (!MixController || !Profile)
+	{
+		return FGuid();
+	}
+	const FGuid Handle = MixController->PushProfileBlended(Profile, BlendTimeSeconds, PriorityOverride);
+
+	// A mix change can alter active duck rules; re-scale every live voice for affected categories.
+	for (const FAudio_DuckRule& Rule : Profile->DuckRules)
+	{
+		RefreshCategoryVoiceVolumes(Rule.TargetCategory);
+	}
+	return Handle;
+}
+
+FGuid UAudio_SoundManagerSubsystem::PushDuckBus(FGameplayTag DuckBusTag)
+{
+	if (!DuckBusTag.IsValid())
+	{
+		return FGuid();
+	}
+	if (UDP_DataRegistrySubsystem* Registry = FDP_SubsystemStatics::GetGameInstanceSubsystem<UDP_DataRegistrySubsystem>(this))
+	{
+		if (UAudio_DuckBusDataAsset* DuckBus = Registry->Find<UAudio_DuckBusDataAsset>(DuckBusTag))
+		{
+			return PushDuckBusAsset(DuckBus);
+		}
+	}
+	UE_LOG(LogDP, Warning, TEXT("Audio: PushDuckBus could not resolve duck-bus tag '%s'."), *DuckBusTag.ToString());
+	return FGuid();
+}
+
+FGuid UAudio_SoundManagerSubsystem::PushDuckBusAsset(UAudio_DuckBusDataAsset* DuckBus)
+{
+	if (!MixController || !DuckBus)
+	{
+		return FGuid();
+	}
+
+	// Build a TRANSIENT mix profile carrying only the duck-bus's duck rules and push it through the
+	// existing priority stack. This reuses GetActiveDuckVolume/RefreshCategoryVoiceVolumes verbatim so
+	// the duck composes with any other active profile by priority — no parallel ducking engine. The
+	// transient profile is kept alive by the controller's snapshot UPROPERTY while it is on the stack.
+	UAudio_MixProfileDataAsset* Transient = NewObject<UAudio_MixProfileDataAsset>(this);
+	Transient->DataTag = DuckBus->DataTag;
+	Transient->Priority = DuckBus->StackPriority;
+	Transient->DuckRules = DuckBus->Duckees;
+
+	const FGuid Handle = MixController->PushProfileBlended(Transient, DuckBus->AttackSeconds, DuckBus->StackPriority);
+
+	for (const FAudio_DuckRule& Rule : Transient->DuckRules)
+	{
+		RefreshCategoryVoiceVolumes(Rule.TargetCategory);
+	}
+
+	UE_LOG(LogDP, Verbose, TEXT("Audio: pushed duck bus '%s' (%d duckee(s))."),
+		*DuckBus->DataTag.ToString(), DuckBus->Duckees.Num());
+	return Handle;
+}
+
+void UAudio_SoundManagerSubsystem::ReleaseDuck(FGuid Handle)
+{
+	// Releasing is identical to popping a mix profile; PopMixProfile already re-scales every category.
+	PopMixProfile(Handle);
 }
 
 // =====================================================================================================

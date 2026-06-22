@@ -127,6 +127,47 @@ public:
 		meta = (ClampMin = "0.0", ClampMax = "4.0"))
 	float StateVolume = 1.0f;
 
+	// ----------------------------------------------------------------------------------------------
+	//  MUSIC DEPTH (6) ADDITIVE tempo metadata for bar-synced (quantized) transitions.
+	//  Defaults reproduce the shipped free-running behaviour byte-for-byte (BeatsPerMinute = 0).
+	// ----------------------------------------------------------------------------------------------
+
+	/**
+	 * Tempo in beats per minute used to derive beat/bar boundaries for quantized transitions in the
+	 * FTSTicker fallback path. 0 (default) = NO tempo => every quantized transition behaves as
+	 * Immediate, so existing states are unchanged. Ignored when a Quartz clock supplies the boundary.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Music|Tempo", meta = (ClampMin = "0.0", UIMax = "240.0"))
+	float BeatsPerMinute = 0.f;
+
+	/** Beats per bar (time-signature numerator) for bar/phrase quantization. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Music|Tempo", meta = (ClampMin = "1", UIMin = "1", UIMax = "16"))
+	int32 BeatsPerBar = 4;
+
+	/** Bars per phrase for NextPhrase quantization (e.g. 4 or 8 bar phrases). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Music|Tempo", meta = (ClampMin = "1", UIMin = "1", UIMax = "64"))
+	int32 PhraseBars = 4;
+
+	/**
+	 * Optional next state for HORIZONTAL re-sequencing: when set, the director may automatically
+	 * advance to this state at a phrase boundary (e.g. an intro that hands off to a loop). Invalid =
+	 * no automatic sequencing. Child of DP.Data.Music.State (the shipped state root).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Music|Tempo", meta = (Categories = "DP.Data.Music.State"))
+	FGameplayTag SequenceNextStateTag;
+
+	/** Seconds per beat from BeatsPerMinute, or 0 if no tempo. Pure helper for the quantize math. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Music|Tempo")
+	float GetSecondsPerBeat() const;
+
+	/** Seconds per bar (GetSecondsPerBeat * BeatsPerBar), or 0 if no tempo. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Music|Tempo")
+	float GetSecondsPerBar() const;
+
+	/** True when this state declares a usable tempo (BeatsPerMinute > 0). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Music|Tempo")
+	bool HasTempo() const { return BeatsPerMinute > 0.f; }
+
 	/** Look up a stinger sound by tag; returns the soft pointer (may be unset) or an empty one. */
 	UFUNCTION(BlueprintCallable, Category = "Music|State")
 	TSoftObjectPtr<USoundBase> FindStinger(FGameplayTag StingerTag) const;

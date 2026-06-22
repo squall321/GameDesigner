@@ -71,6 +71,18 @@ TSoftObjectPtr<USoundBase> UAudio_MusicStateDataAsset::FindStinger(FGameplayTag 
 	return TSoftObjectPtr<USoundBase>();
 }
 
+float UAudio_MusicStateDataAsset::GetSecondsPerBeat() const
+{
+	// No tempo => 0 (callers treat 0 as "no quantization possible").
+	return (BeatsPerMinute > 0.f) ? (60.f / BeatsPerMinute) : 0.f;
+}
+
+float UAudio_MusicStateDataAsset::GetSecondsPerBar() const
+{
+	const float Beat = GetSecondsPerBeat();
+	return (Beat > 0.f) ? (Beat * FMath::Max(1, BeatsPerBar)) : 0.f;
+}
+
 bool UAudio_MusicStateDataAsset::HasPlayableLayers() const
 {
 	for (const FAudio_MusicLayer& Layer : Layers)

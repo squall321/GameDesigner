@@ -13,10 +13,19 @@ public class DesignPatternsInteraction : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core", "CoreUObject", "Engine", "GameplayTags", "NetCore",
-			"DesignPatterns", "DesignPatternsSeams"
+			"DesignPatterns", "DesignPatternsSeams",
+			// Framework base/seam modules (NOT sibling genre/HL modules): UDP_ViewModelBase for the
+			// context-menu ViewModel, and the IHUD_Trackable seam for the world-space prompt marker.
+			"DesignPatternsUI", "DesignPatternsHUD"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "DeveloperSettings" });
+		PrivateDependencyModuleNames.AddRange(new string[]
+		{
+			"DeveloperSettings",
+			// FieldNotification backs the context-menu ViewModel's observable fields (matching the
+			// shipped SaveSystemUI ViewModel). Listed explicitly though DesignPatternsUI re-exports it.
+			"FieldNotification"
+		});
 
 		if (Target.Version.MajorVersion == 5 && Target.Version.MinorVersion <= 4)
 		{

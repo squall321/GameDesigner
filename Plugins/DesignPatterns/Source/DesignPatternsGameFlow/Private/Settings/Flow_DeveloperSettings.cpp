@@ -16,6 +16,10 @@ UFlow_DeveloperSettings::UFlow_DeveloperSettings()
 	// request it by name (a project's UI mediator owns the actual layer). RequestGameplayTag avoids a
 	// hard dependency on the UI module's tag registry.
 	DefaultScreenLayerTag = FGameplayTag::RequestGameplayTag(FName("DP.UI.Layer.Menu"), /*ErrorIfNotFound*/ false);
+
+	// Terminal net/travel failure jumps to the NetError phase by default; a project with no NetError screen
+	// can repoint this at Flow.Phase.MainMenu.
+	NetErrorPhase = FlowTags::Phase_NetError;
 }
 
 const UFlow_DeveloperSettings* UFlow_DeveloperSettings::Get()

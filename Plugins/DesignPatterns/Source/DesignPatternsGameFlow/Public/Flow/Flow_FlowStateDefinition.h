@@ -89,6 +89,16 @@ public:
 	bool bPausesGame = false;
 
 	/**
+	 * Streaming-content categories the loading flow requests RESIDENT (loaded + visible) on entering this
+	 * phase, through the shared ISeam_StreamingControl seam (the LevelDirector adapter maps each category
+	 * tag to concrete sublevels). The loading coordinator aggregates their progress into the loading bar.
+	 * Empty means this phase streams no extra sublevels (the loading screen stays preload-only). Additive —
+	 * per-phase streaming content lives here in the data asset, where the module keeps per-phase data.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Flow|Level", meta = (Categories = "DP.Streaming.Category"))
+	FGameplayTagContainer StreamingCategories;
+
+	/**
 	 * True if this phase definition declares a transition to TargetPhase (or AllowedTransitions is empty
 	 * and undeclared transitions are open). Pure helper for the flow subsystem.
 	 */

@@ -11,6 +11,12 @@
 class UFlow_FlowStateDefinition;
 class UDP_MessageBusSubsystem;
 class UDP_ServiceLocatorSubsystem;
+class UFlow_MatchmakingController;
+class UFlow_TravelCoordinator;
+class UFlow_PauseController;
+class UFlow_BootSequenceController;
+class UFlow_FlowHistory;
+class UFlow_ProfileLoadedGuard;
 
 /**
  * Top-level application/game flow finite-state machine (GameInstance-scoped so it survives level
@@ -84,6 +90,43 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Flow")
 	bool IsPaused() const;
 
+	// --- Additive deepening (orchestrators + back-stack) ---
+
+	/**
+	 * Pop the current phase off the flow back-stack and transition to the phase below it (e.g. Pause ->
+	 * InGame, NetError -> MainMenu). Returns false if there is nothing to go back to. Uses ForceTransition
+	 * (a back-pop is recovery / overlay-dismiss and must not be gated by guards). Additive.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Flow")
+	bool GoBack();
+
+	/** The matchmaking controller (owned; drives session flow via ISeam_NetSession). Never null after Initialize. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Flow")
+	UFlow_MatchmakingController* GetMatchmaking() const { return Matchmaking; }
+
+	/** The travel coordinator (owned; carry-over save/restore around level travel). Never null after Initialize. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Flow")
+	UFlow_TravelCoordinator* GetTravelCoordinator() const { return TravelCoordinator; }
+
+	/** The pause controller (owned; focus-loss auto-pause). Never null after Initialize. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Flow")
+	UFlow_PauseController* GetPauseController() const { return PauseController; }
+
+	/** The boot-sequence controller (owned; data-driven boot). Never null after Initialize. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Flow")
+	UFlow_BootSequenceController* GetBootController() const { return BootController; }
+
+	/** The flow back-stack / re-entrancy bookkeeping (owned). Never null after Initialize. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Flow")
+	UFlow_FlowHistory* GetHistory() const { return History; }
+
+	/**
+	 * Public additive accessor exposing the (already-cached) phase definition resolution for the loading
+	 * coordinator (which needs a phase's StreamingCategories). Thin wrapper over the private resolver; null
+	 * when no definition is authored.
+	 */
+	const UFlow_FlowStateDefinition* ResolvePhaseDefinitionForLoading(FGameplayTag Phase) const;
+
 	//~ Begin UDP_GameInstanceSubsystem
 	virtual FString GetDPDebugString_Implementation() const override;
 	//~ End UDP_GameInstanceSubsystem
@@ -154,6 +197,19 @@ private:
 	/** True if this machine has the authority to drive an absolute level travel (host/standalone). */
 	bool HasTravelAuthority() const;
 
+	/**
+	 * Consult every registered ISeam_FlowGuard for the From->To edge. Returns true if ALL guards allow it
+	 * (or guards are disabled). On a denial, returns false and fills OutDenyReason with the first denier's
+	 * reason. Called ONLY from DoTransition's non-force branch (ForceTransition bypasses guards). Additive.
+	 */
+	bool PassesFlowGuards(FGameplayTag From, FGameplayTag To, FGameplayTag& OutDenyReason) const;
+
+	/** Create + register the built-in profile-loaded guard and the orchestrator subobjects. Additive. */
+	void InitializeOrchestrators();
+
+	/** Tear down the orchestrator subobjects + the registered guard. Additive. */
+	void ShutdownOrchestrators();
+
 	// --- State ---
 
 	/** The currently-active top-level flow phase. */
@@ -177,4 +233,33 @@ private:
 
 	/** True once we have registered ourselves as the ISeam_AppFlowController provider. */
 	bool bRegisteredAsService = false;
+
+	// --- Additive owned orchestrator subobjects (instanced via NewObject(this); GC-kept by UPROPERTY) ---
+
+	/** Matchmaking / session flow driver. */
+	UPROPERTY(Transient)
+	TObjectPtr<UFlow_MatchmakingController> Matchmaking = nullptr;
+
+	/** Carry-over save/restore + travel-failure recovery around level travel. */
+	UPROPERTY(Transient)
+	TObjectPtr<UFlow_TravelCoordinator> TravelCoordinator = nullptr;
+
+	/** Focus-loss / suspend auto-pause controller. */
+	UPROPERTY(Transient)
+	TObjectPtr<UFlow_PauseController> PauseController = nullptr;
+
+	/** Data-driven boot-sequence controller. */
+	UPROPERTY(Transient)
+	TObjectPtr<UFlow_BootSequenceController> BootController = nullptr;
+
+	/** Re-entrancy lock + bounded phase back-stack. */
+	UPROPERTY(Transient)
+	TObjectPtr<UFlow_FlowHistory> History = nullptr;
+
+	/** The built-in profile-loaded flow guard (registered into the locator under Service_FlowGuard). */
+	UPROPERTY(Transient)
+	TObjectPtr<UFlow_ProfileLoadedGuard> ProfileGuard = nullptr;
+
+	/** True once we have registered the built-in profile guard (so we unregister exactly once). */
+	bool bRegisteredProfileGuard = false;
 };

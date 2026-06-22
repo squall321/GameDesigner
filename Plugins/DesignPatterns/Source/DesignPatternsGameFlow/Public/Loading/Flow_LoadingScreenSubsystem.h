@@ -10,6 +10,7 @@
 
 class UFlow_LoadingViewModel;
 class UDP_MessageBusSubsystem;
+class UFlow_StreamingLoadCoordinator;
 
 /** Coarse loading lifecycle the progress model surfaces to the UI. */
 UENUM(BlueprintType)
@@ -79,6 +80,22 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Flow|Loading")
 	UFlow_LoadingViewModel* GetViewModel() const { return ViewModel; }
 
+	/**
+	 * Begin aggregating a streaming-sublevel load for the given content categories into the loading bar
+	 * (driven through the shared ISeam_StreamingControl seam). Additive convenience over the owned
+	 * coordinator; no-op (preload-only) when no streaming adapter is registered or Categories is empty.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Flow|Loading")
+	void BeginStreamingLoad(const FGameplayTagContainer& Categories, FText Label);
+
+	/** Release any active streaming aggregate (e.g. on cancel / phase change). Additive. */
+	UFUNCTION(BlueprintCallable, Category = "Flow|Loading")
+	void EndStreamingLoad();
+
+	/** The owned streaming-load coordinator (never null after Initialize). Additive. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Flow|Loading")
+	UFlow_StreamingLoadCoordinator* GetStreamingCoordinator() const { return StreamingCoordinator; }
+
 	//~ Begin UDP_GameInstanceSubsystem
 	virtual FString GetDPDebugString_Implementation() const override;
 	//~ End UDP_GameInstanceSubsystem
@@ -136,4 +153,8 @@ private:
 	/** Engine delegate handles, removed on Deinitialize. */
 	FDelegateHandle PreLoadMapHandle;
 	FDelegateHandle PostLoadMapHandle;
+
+	/** Owned streaming-load coordinator (aggregates sublevel streaming into the bar). Additive. */
+	UPROPERTY(Transient)
+	TObjectPtr<UFlow_StreamingLoadCoordinator> StreamingCoordinator = nullptr;
 };

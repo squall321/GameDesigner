@@ -6,9 +6,12 @@
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "Types/Interact_Types.h"
+#include "Types/Interact_AvailabilityTypes.h"
+#include "Command/DPCommandContext.h"     // FDP_CommandTargetHandle (net-safe durable target identity)
 #include "Interact_InteractorComponent.generated.h"
 
 class UInteract_FocusStrategy;
+class UInteract_QueryShapeStrategy;
 
 /** Local delegate: the focused interactable changed (fires on the owning client). */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FInteract_OnFocusChanged,
@@ -77,6 +80,31 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Interact")
 	void RequestEndInteract(EInteract_EndReason Reason);
 
+	/**
+	 * ADDITIVE. Request an interaction with a SPECIFIC client-named target (e.g. a cursor pick or a
+	 * cycled candidate that is not the focus-strategy default). Unlike RequestInteract, this carries
+	 * the target as a net-safe durable handle so the SERVER can re-validate that exact candidate
+	 * (resolve, CanInteract, range/LOS, availability seam) before BeginInteract — the client cannot
+	 * name an actor it could not legitimately reach. Routes to ServerInteractAt on remote clients.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Interact")
+	void RequestInteractAt(FGameplayTag DesiredVerb, AActor* Target);
+
+	/**
+	 * ADDITIVE. Request a batch ("interact with all") for DesiredVerb: the server re-derives every
+	 * eligible candidate, clamps to MaxBatchTargets, and runs BeginInteract on each accepted one,
+	 * broadcasting one DP.Bus.Interact.BatchComplete. Routes to ServerBatchInteract on remote clients.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Interact")
+	void RequestBatchInteract(FGameplayTag DesiredVerb);
+
+	/**
+	 * ADDITIVE. Build the full multi-verb menu (every supported verb folded through the availability
+	 * seam) for the currently-focused interactable. Empty when there is no focus. Local/UI helper.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Interact")
+	void GetFocusVerbMenu(FInteract_VerbMenu& Out) const;
+
 	/** The actor currently focused locally (the focus strategy's pick), or null. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Interact")
 	AActor* GetFocusActor() const { return FocusActor.Get(); }
@@ -134,6 +162,36 @@ public:
 	 */
 	void ServerEndInteractAuthoritative(EInteract_EndReason Reason);
 
+	/**
+	 * ADDITIVE / AUTHORITY ONLY. Re-validate a CLIENT-NAMED target (resolved from a durable handle) for
+	 * Verb and begin the interaction. Re-runs detection to confirm the named candidate is one the
+	 * instigator can actually reach (CanInteract + range/LOS + availability seam), so a cursor/cycler
+	 * pick can never bypass authority. Called by ServerInteractAt_Implementation; also callable from
+	 * server gameplay code. Returns the outcome.
+	 */
+	EInteract_Result ServerBeginInteractAtAuthoritative(FGameplayTag DesiredVerb, AActor* Target);
+
+	/**
+	 * ADDITIVE / AUTHORITY ONLY. Re-derive ALL eligible candidates for Verb, clamp to MaxBatchTargets,
+	 * BeginInteract each accepted one (instant verbs complete immediately), and broadcast a single
+	 * DP.Bus.Interact.BatchComplete. Returns the number of targets successfully interacted with.
+	 * Called by ServerBatchInteract_Implementation and the batch command.
+	 */
+	int32 ServerBatchInteractAuthoritative(FGameplayTag DesiredVerb);
+
+	/**
+	 * ADDITIVE. Snapshot the locally-detected candidate actors (in detection order) for this tick.
+	 * Used by UInteract_FocusCyclerComponent to cycle through reachable targets. Local/cosmetic; the
+	 * server still re-validates any chosen target. Fills OutActors (cleared first).
+	 */
+	void GetLocalCandidateActors(TArray<AActor*>& OutActors) const;
+
+	/** ADDITIVE. Override the local focus to a specific candidate actor (focus cycling / cursor pick). */
+	void SetLocalFocusOverride(AActor* OverrideActor);
+
+	/** ADDITIVE. Clear any local focus override, returning to the focus strategy's pick. */
+	void ClearLocalFocusOverride();
+
 protected:
 	// ---- Tunables / configuration ----
 
@@ -156,6 +214,22 @@ protected:
 	/** Maximum interactables the detection overlap will consider per update (caps cost in dense scenes). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact|Config", meta = (ClampMin = "1"))
 	int32 MaxCandidates = 16;
+
+	/**
+	 * ADDITIVE. Optional broad-phase shape that gathers raw candidate actors before the component runs
+	 * its existing per-candidate scoring. When null (default) the component uses its built-in sphere
+	 * overlap path unchanged — full backward parity. Inline-instanced so designers swap it in details.
+	 */
+	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Interact|Config")
+	TObjectPtr<UInteract_QueryShapeStrategy> QueryShape;
+
+	/**
+	 * ADDITIVE. Maximum number of targets a single batch ("interact with all") request will act on.
+	 * The server clamps the re-derived candidate set to this, so a client cannot force an unbounded
+	 * batch. Tunable, not a magic constant.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact|Config", meta = (ClampMin = "1"))
+	int32 MaxBatchTargets = 8;
 
 private:
 	// ---- Replicated state (owner-only) ----
@@ -207,6 +281,21 @@ private:
 	/** Time accumulator (seconds) used to throttle focus updates to FocusUpdateHz. */
 	float FocusAccumulator = 0.f;
 
+	/**
+	 * ADDITIVE. When valid, the local focus is forced to this actor (focus cycling / cursor pick)
+	 * instead of the focus-strategy pick. Non-owning. Cleared via ClearLocalFocusOverride. Purely
+	 * local — the server still re-validates whatever target an interaction request names.
+	 */
+	UPROPERTY(Transient)
+	TWeakObjectPtr<AActor> LocalFocusOverride;
+
+	/**
+	 * ADDITIVE. The actors detected during the most recent local focus update, in detection order.
+	 * Snapshotted so UInteract_FocusCyclerComponent can cycle through them without re-tracing. Local.
+	 */
+	UPROPERTY(Transient)
+	TArray<TWeakObjectPtr<AActor>> LocalCandidateActors;
+
 	// ---- Server RPCs ----
 
 	/**
@@ -224,6 +313,18 @@ private:
 	/** Server -> owning client feedback with the outcome of a request (for UI). */
 	UFUNCTION(Client, Reliable)
 	void ClientInteractResult(EInteract_Result Result, FGameplayTag Verb);
+
+	/**
+	 * ADDITIVE. Client -> server intent naming a SPECIFIC target by a net-safe durable handle. The
+	 * server resolves the handle, then re-validates that the named target is genuinely reachable
+	 * (re-runs detection and matches the candidate) before acting — never trusting the client's reach.
+	 */
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerInteractAt(FGameplayTag DesiredVerb, FDP_CommandTargetHandle Target);
+
+	/** ADDITIVE. Client -> server intent to interact with all eligible targets for a verb (clamped server-side). */
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerBatchInteract(FGameplayTag DesiredVerb);
 
 	// ---- Helpers ----
 
@@ -257,6 +358,26 @@ private:
 
 	/** Broadcast a DP.Bus.Interact.* event with an FInteract_BusPayload (server side). */
 	void BroadcastBusEvent(FGameplayTag Channel, AActor* Target, FGameplayTag Verb, EInteract_EndReason Reason) const;
+
+	/** ADDITIVE. Broadcast DP.Bus.Interact.Denied with an FInteract_DenialPayload (server side). */
+	void BroadcastDenied(AActor* Target, FGameplayTag Verb, FGameplayTag ReasonTag) const;
+
+	/** ADDITIVE. Broadcast DP.Bus.Interact.BatchComplete with an FInteract_BatchPayload (server side). */
+	void BroadcastBatchComplete(FGameplayTag Verb, int32 SuccessCount) const;
+
+	/**
+	 * ADDITIVE. Score one already-gathered candidate actor for Query, filling OutCandidate. Shared by
+	 * both the built-in sphere path and the QueryShape broad-phase so client and server compute
+	 * identical metadata. Returns false if the actor is not a valid, eligible candidate.
+	 */
+	bool ScoreCandidateActor(AActor* Actor, const FInteract_Query& Query, FInteract_Candidate& OutCandidate) const;
+
+	/**
+	 * ADDITIVE. Check an interactable's availability via the optional ISeam_InteractAvailability seam
+	 * for Verb against the owner's identity. Returns true (available) when the seam is absent. On a
+	 * false result OutReasonTag carries the DP.Interact.Reason.* tag.
+	 */
+	bool CheckVerbAvailability(UObject* Interactable, FGameplayTag Verb, FGameplayTag& OutReasonTag) const;
 
 	/** Set the replicated active-interaction pair on the server (authority-guarded). */
 	void SetActiveInteraction_Server(FGameplayTag Verb, double StartTime, UObject* Interactable, AActor* TargetActor);

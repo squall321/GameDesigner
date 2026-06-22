@@ -14,7 +14,11 @@ public class DesignPatternsSaveSystem : ModuleRules
 			"DesignPatterns", "DesignPatternsSeams"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "DeveloperSettings" });
+		// ImageWrapper: PNG encode/decode for save-slot thumbnails. Kept PRIVATE so consumers do not inherit
+		// it. FCompression / IFileManager / FScreenshotRequest already come from Engine + Core on the public
+		// list, so no RHI/RenderCore is needed — the thumbnail capturer WRAPS the engine screenshot pipeline
+		// rather than reading the back-buffer directly.
+		PrivateDependencyModuleNames.AddRange(new string[] { "DeveloperSettings", "ImageWrapper" });
 
 		if (Target.Version.MajorVersion == 5 && Target.Version.MinorVersion <= 4)
 		{

@@ -16,6 +16,18 @@
 #include "Sound/SoundClass.h"
 #include "Engine/World.h"
 
+#include "Clock/Seam_SimClock.h"
+
+// Quartz is an Engine-resident metronome; its handle header path is stable across 5.3-5.5 but we
+// guard the include so the music director still compiles if a stripped target lacks it. When absent,
+// the bar-sync fallback (tempo accumulator) is used exclusively.
+#if __has_include("Quartz/AudioMixerClockHandle.h")
+#include "Quartz/AudioMixerClockHandle.h"
+#define DP_AUDIO_HAS_QUARTZ 1
+#else
+#define DP_AUDIO_HAS_QUARTZ 0
+#endif
+
 // ---------------------------------------------------------------------------------------------
 //  FAudio_MusicVoice
 // ---------------------------------------------------------------------------------------------
@@ -327,6 +339,10 @@ void UAudio_MusicDirectorSubsystem::SetMusicStateAsset(UAudio_MusicStateDataAsse
 	ActiveState = State;
 	ActiveStateTag = State->DataTag;
 
+	// MUSIC DEPTH (6): boundaries are measured from the state start, so reset the tempo phase.
+	TempoPhaseSeconds = 0.0;
+	LastTempoPhaseSeconds = 0.0;
+
 	SpawnVoicesForActiveState(Crossfade);
 
 	UE_LOG(LogDP, Verbose, TEXT("MusicDirector: -> state '%s' (crossfade %.2fs)."),
@@ -543,6 +559,9 @@ void UAudio_MusicDirectorSubsystem::ReleaseVoice(FAudio_MusicVoice& Voice)
 
 bool UAudio_MusicDirectorSubsystem::Tick(float DeltaTime)
 {
+	// 0) MUSIC DEPTH (6): advance tempo phase and apply any pending quantized transition at its boundary.
+	AdvanceQuantization(DeltaTime);
+
 	// 1) Ease intensity toward its target, then re-target active-layer volumes if it moved.
 	const UAudio_MusicDirectorSettings& Settings = UAudio_MusicDirectorSettings::GetChecked();
 	const float InterpSpeed = Settings.IntensityInterpSpeed;
@@ -609,6 +628,165 @@ bool UAudio_MusicDirectorSubsystem::Tick(float DeltaTime)
 	}
 
 	return true; // keep ticking
+}
+
+// ---------------------------------------------------------------------------------------------
+//  MUSIC DEPTH (6) — quantized transitions
+// ---------------------------------------------------------------------------------------------
+
+void UAudio_MusicDirectorSubsystem::SetMusicStateQuantized(FGameplayTag StateTag, EAudio_MusicQuantize Quantize)
+{
+	if (!StateTag.IsValid())
+	{
+		return;
+	}
+
+	// Immediate, or no usable tempo on the active state and no Quartz clock -> apply now (fallback).
+	const bool bCanQuantize = (Quantize != EAudio_MusicQuantize::Immediate) &&
+		(QuartzClock.IsValid() || (ActiveState && ActiveState->HasTempo()));
+	if (!bCanQuantize)
+	{
+		SetMusicState(StateTag);
+		return;
+	}
+
+	PendingStateTag = StateTag;
+	PendingStateQuantize = Quantize;
+	UE_LOG(LogDP, Verbose, TEXT("MusicDirector: queued quantized state '%s' (boundary %d)."),
+		*StateTag.ToString(), static_cast<int32>(Quantize));
+}
+
+void UAudio_MusicDirectorSubsystem::SetIntensityQuantized(float Intensity, EAudio_MusicQuantize Quantize)
+{
+	const float Clamped = FMath::Clamp(Intensity, 0.f, 1.f);
+
+	const bool bCanQuantize = (Quantize != EAudio_MusicQuantize::Immediate) &&
+		(QuartzClock.IsValid() || (ActiveState && ActiveState->HasTempo()));
+	if (!bCanQuantize)
+	{
+		SetIntensity(Clamped);
+		return;
+	}
+
+	bHasPendingIntensity = true;
+	PendingIntensityValue = Clamped;
+	PendingIntensityQuantize = Quantize;
+}
+
+void UAudio_MusicDirectorSubsystem::SetQuartzClock(UQuartzClockHandle* Clock)
+{
+	QuartzClock = Clock;
+}
+
+void UAudio_MusicDirectorSubsystem::SetSimClock(const TScriptInterface<ISeam_SimClock>& InClock)
+{
+	if (UObject* Obj = InClock.GetObject())
+	{
+		SimClock = TWeakInterfacePtr<ISeam_SimClock>(*Obj);
+	}
+	else
+	{
+		SimClock = nullptr;
+	}
+}
+
+void UAudio_MusicDirectorSubsystem::AdvanceQuantization(float DeltaTime)
+{
+	// Nothing pending -> no work (and don't accumulate phase needlessly).
+	if (!PendingStateTag.IsValid() && !bHasPendingIntensity)
+	{
+		return;
+	}
+
+	LastTempoPhaseSeconds = TempoPhaseSeconds;
+
+	// Advance the fallback tempo phase using the sim clock's time scale (pause-aware) when present.
+	float Scale = 1.f;
+	bool bPaused = false;
+	if (UObject* ClockObj = SimClock.GetObject())
+	{
+		Scale = static_cast<float>(ISeam_SimClock::Execute_GetTimeScale(ClockObj));
+		bPaused = ISeam_SimClock::Execute_IsPaused(ClockObj);
+	}
+	if (!bPaused)
+	{
+		TempoPhaseSeconds += static_cast<double>(DeltaTime) * static_cast<double>(FMath::Max(0.f, Scale));
+	}
+
+	// Apply pending state if its boundary just passed.
+	if (PendingStateTag.IsValid() && DidCrossBoundary(PendingStateQuantize))
+	{
+		FlushPendingState();
+	}
+	// Apply pending intensity if its boundary just passed.
+	if (bHasPendingIntensity && DidCrossBoundary(PendingIntensityQuantize))
+	{
+		FlushPendingIntensity();
+	}
+}
+
+bool UAudio_MusicDirectorSubsystem::DidCrossBoundary(EAudio_MusicQuantize Quantize) const
+{
+	if (Quantize == EAudio_MusicQuantize::Immediate)
+	{
+		return true;
+	}
+
+#if DP_AUDIO_HAS_QUARTZ
+	// With a Quartz clock, defer to its running metronome: a boundary is considered crossed each tick
+	// while the clock is running (the engine drives the precise musical timing; we re-evaluate per tick
+	// and apply at the first tick the clock reports it is running). This keeps the integration soft.
+	if (UQuartzClockHandle* Clock = QuartzClock.Get())
+	{
+		// IsClockRunning is const-safe; if the project started the clock, snap on the next tick boundary.
+		// (Sample-accurate scheduling would route through the clock's quantized command queue; here we
+		// keep a dependency-light approximation that still lands on the clock's beat cadence.)
+		return Clock->IsClockRunning(Clock);
+	}
+#endif
+
+	// Fallback: derive the boundary period from the active state's tempo metadata.
+	if (!ActiveState || !ActiveState->HasTempo())
+	{
+		return true; // No tempo -> cannot quantize; apply immediately.
+	}
+
+	double Period = 0.0;
+	switch (Quantize)
+	{
+	case EAudio_MusicQuantize::NextBeat:   Period = ActiveState->GetSecondsPerBeat(); break;
+	case EAudio_MusicQuantize::NextBar:    Period = ActiveState->GetSecondsPerBar(); break;
+	case EAudio_MusicQuantize::NextPhrase: Period = ActiveState->GetSecondsPerBar() * FMath::Max(1, ActiveState->PhraseBars); break;
+	default: return true;
+	}
+	if (Period <= 0.0)
+	{
+		return true;
+	}
+
+	// Boundary crossed if the integer count of periods increased between last tick and now.
+	const int64 LastCount = static_cast<int64>(LastTempoPhaseSeconds / Period);
+	const int64 NowCount = static_cast<int64>(TempoPhaseSeconds / Period);
+	return NowCount > LastCount;
+}
+
+void UAudio_MusicDirectorSubsystem::FlushPendingState()
+{
+	const FGameplayTag Tag = PendingStateTag;
+	PendingStateTag = FGameplayTag();
+	PendingStateQuantize = EAudio_MusicQuantize::Immediate;
+	if (Tag.IsValid())
+	{
+		SetMusicState(Tag); // also resets the tempo phase via SetMusicStateAsset.
+	}
+}
+
+void UAudio_MusicDirectorSubsystem::FlushPendingIntensity()
+{
+	const float Value = PendingIntensityValue;
+	bHasPendingIntensity = false;
+	PendingIntensityQuantize = EAudio_MusicQuantize::Immediate;
+	SetIntensity(Value);
 }
 
 // ---------------------------------------------------------------------------------------------

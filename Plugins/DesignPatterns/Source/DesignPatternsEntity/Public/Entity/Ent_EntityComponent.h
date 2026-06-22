@@ -184,6 +184,23 @@ public:
 	/** Called by the trait fast-array entry callbacks on clients to surface a replicated change. */
 	void HandleReplicatedTraitChange();
 
+	// ---- Additive: per-trait replicated scalar payload -----------------------------------------
+
+	/**
+	 * AUTHORITY ONLY. Write a trait's single net-relevant scalar into its replicated FEnt_TraitEntry
+	 * (StatePayload), so subclasses such as UEnt_AdvancedTrait can mirror runtime enable/stack state to
+	 * clients without a new replicated array. No-op on clients or for an unknown trait kind.
+	 *
+	 * This is purely additive: the shipped SyncReplicatedEntryForTrait leaves StatePayload unset, and
+	 * this method only sets it for traits that opt in. Marks the entry dirty so the change replicates.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Entity|Trait")
+	void SetTraitStatePayload(FGameplayTag TraitTag, FSeam_NetValue Payload);
+
+	/** Read a trait's replicated StatePayload (works on clients), or an unset value if absent. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Entity|Trait")
+	FSeam_NetValue GetTraitStatePayload(FGameplayTag TraitTag) const;
+
 	// ---- Authority helper ----------------------------------------------------------------------
 
 	/** True when this machine owns authority over the entity (server / standalone). */

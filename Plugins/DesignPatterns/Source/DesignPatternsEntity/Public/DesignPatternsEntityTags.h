@@ -43,4 +43,40 @@ namespace EntNativeTags
 
 	/** Concrete trait-kind id for the shipped stat-bag trait (UEnt_StatBagTrait). */
 	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Trait_StatBag);
+
+	// ---- Additive deepening anchors (relationship / tags / snapshot / significance) ------------
+
+	/**
+	 * Root for entity-relationship link kinds (Ent.Link.<Kind>). These are the FGameplayTag link
+	 * kinds carried across ISeam_EntityRelationshipRead and stored on UEnt_RelationshipComponent.
+	 * The four shipped kinds below anchor the common topology; projects add their own children.
+	 */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Link);
+
+	/** One-to-one ownership link (the owner-chain / lifetime-propagation kind): Ent.Link.Owner. */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Link_Owner);
+
+	/** Scene/hierarchy parent link (a child belongs under a parent): Ent.Link.Parent. */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Link_Parent);
+
+	/** Physical/logical attachment link (e.g. a weapon attached to a socket): Ent.Link.Attached. */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Link_Attached);
+
+	/** Group-membership link (squad/party/pack): Ent.Link.Grouped. */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Link_Grouped);
+
+	/** Root for the replicated entity tag-container tags (Ent.Tag.<...>) carried on the tag component. */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Cap_Tags);
+
+	/** Persistence-kind tag for the entity snapshot/rewind subsystem records. */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Snapshot);
+
+	/** Message-bus channel: an entity's relationship links changed (local re-broadcast). */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_LinksChanged);
+
+	/** Message-bus channel: an entity's replicated tag set changed (local re-broadcast). */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_TagsChanged);
+
+	/** Message-bus channel: an entity's significance bucket changed (local re-broadcast). */
+	DESIGNPATTERNSENTITY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_SignificanceChanged);
 }

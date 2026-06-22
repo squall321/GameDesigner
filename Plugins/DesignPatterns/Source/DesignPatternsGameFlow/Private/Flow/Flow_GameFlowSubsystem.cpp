@@ -15,11 +15,20 @@
 
 #include "Input/Seam_InputModeArbiter.h"
 #include "Persist/Seam_SaveSlotManager.h"
+#include "Flow/Seam_FlowGuard.h"
+
+#include "Flow/Matchmaking/Flow_MatchmakingController.h"
+#include "Flow/Travel/Flow_TravelCoordinator.h"
+#include "Flow/Pause/Flow_PauseController.h"
+#include "Flow/Guards/Flow_FlowHistory.h"
+#include "Flow/Guards/Flow_ProfileLoadedGuard.h"
+#include "Boot/Flow_BootSequenceController.h"
 
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/ScopeExit.h"
 
 // FInstancedStruct: StructUtils plugin on 5.3/5.4, merged into CoreUObject on 5.5+.
 #if __has_include("StructUtils/InstancedStruct.h")
@@ -45,18 +54,90 @@ void UFlow_GameFlowSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 			bRegisteredAsService ? TEXT("ok") : TEXT("FAILED"));
 	}
 
-	// Enter the configured initial phase (defensive default: Flow.Phase.Boot). We force it because there
-	// is no source phase to validate against yet.
-	const UFlow_DeveloperSettings* Settings = UFlow_DeveloperSettings::Get();
-	const FGameplayTag StartPhase = (Settings && Settings->InitialPhase.IsValid())
-		? Settings->InitialPhase
-		: FlowTags::Phase_Boot;
+	// Create + register the additive orchestrator subobjects and the built-in flow guard BEFORE the first
+	// transition, so guards/back-stack are live for it.
+	InitializeOrchestrators();
 
-	DoTransition(StartPhase, /*bForce*/ true);
+	// The flow ALWAYS boots into Boot first (there is no source phase to validate against), then the boot
+	// controller runs the data-driven sequence and transitions to the configured InitialPhase. A project
+	// that wants no boot leaves BootSequence unset — the controller then completes immediately and forwards
+	// to InitialPhase. We force the Boot entry because there is no source phase yet.
+	DoTransition(FlowTags::Phase_Boot, /*bForce*/ true);
+
+	// Kick the data-driven boot sequence (idempotent; completes immediately when nothing is authored).
+	if (BootController)
+	{
+		BootController->StartBoot();
+	}
+}
+
+void UFlow_GameFlowSubsystem::InitializeOrchestrators()
+{
+	const UFlow_DeveloperSettings* Settings = UFlow_DeveloperSettings::Get();
+
+	// Back-stack / re-entrancy bookkeeping.
+	History = NewObject<UFlow_FlowHistory>(this);
+	History->SetMaxDepth(Settings ? Settings->FlowHistoryDepth : 16);
+
+	// Orchestrator subobjects (owned via UPROPERTY; instanced with this as Outer).
+	Matchmaking = NewObject<UFlow_MatchmakingController>(this);
+	Matchmaking->Initialize(this);
+
+	TravelCoordinator = NewObject<UFlow_TravelCoordinator>(this);
+	TravelCoordinator->Initialize(this);
+
+	PauseController = NewObject<UFlow_PauseController>(this);
+	PauseController->Initialize(this);
+
+	BootController = NewObject<UFlow_BootSequenceController>(this);
+	BootController->Initialize(this);
+
+	// Built-in profile-loaded guard, registered into the locator under Service_FlowGuard (WeakObserved —
+	// we own it via the UPROPERTY above; the locator only observes it and prunes on our teardown).
+	ProfileGuard = NewObject<UFlow_ProfileLoadedGuard>(this);
+	if (UDP_ServiceLocatorSubsystem* Locator = GetLocator())
+	{
+		bRegisteredProfileGuard = Locator->RegisterService(
+			FlowTags::Service_FlowGuard, ProfileGuard, EDP_ServiceLifetime::WeakObserved, /*bAllowOverride*/ false);
+		UE_LOG(LogDP, Log, TEXT("[GameFlow] Registered built-in ProfileLoadedGuard: %s"),
+			bRegisteredProfileGuard ? TEXT("ok") : TEXT("already-bound (project guard takes precedence)"));
+	}
+}
+
+void UFlow_GameFlowSubsystem::ShutdownOrchestrators()
+{
+	if (Matchmaking)       { Matchmaking->Shutdown(); }
+	if (TravelCoordinator) { TravelCoordinator->Shutdown(); }
+	if (PauseController)   { PauseController->Shutdown(); }
+	if (BootController)    { BootController->Shutdown(); }
+
+	if (bRegisteredProfileGuard)
+	{
+		if (UDP_ServiceLocatorSubsystem* Locator = GetLocator())
+		{
+			// Only unregister if WE are still the bound guard (a project may have overridden us).
+			if (Locator->ResolveService(FlowTags::Service_FlowGuard) == ProfileGuard)
+			{
+				Locator->UnregisterService(FlowTags::Service_FlowGuard);
+			}
+		}
+		bRegisteredProfileGuard = false;
+	}
+
+	Matchmaking = nullptr;
+	TravelCoordinator = nullptr;
+	PauseController = nullptr;
+	BootController = nullptr;
+	History = nullptr;
+	ProfileGuard = nullptr;
 }
 
 void UFlow_GameFlowSubsystem::Deinitialize()
 {
+	// Tear down orchestrators FIRST so their timers / engine-delegate registrations / listener registrations
+	// are removed before the GI drops us (no dangling callbacks into a half-destroyed subsystem).
+	ShutdownOrchestrators();
+
 	// Release any input-mode push we own so we don't leave the arbiter stack dirty across travel.
 	PopInputMode();
 
@@ -99,6 +180,17 @@ bool UFlow_GameFlowSubsystem::RequestTransition_Implementation(FGameplayTag Phas
 	{
 		UE_LOG(LogDP, Verbose, TEXT("[GameFlow] Transition %s -> %s not allowed."),
 			*ActivePhase.ToString(), *PhaseTag.ToString());
+		return false;
+	}
+
+	// Flow-guard VETO — consulted ONLY on this validated (non-forced) path; ForceTransition keeps its
+	// documented bypass. A denial blocks the transition and is surfaced via the deny-reason tag.
+	FGameplayTag DenyReason;
+	if (!PassesFlowGuards(ActivePhase, PhaseTag, DenyReason))
+	{
+		UE_LOG(LogDP, Verbose, TEXT("[GameFlow] Transition %s -> %s vetoed by a flow guard (reason %s)."),
+			*ActivePhase.ToString(), *PhaseTag.ToString(),
+			DenyReason.IsValid() ? *DenyReason.ToString() : TEXT("<none>"));
 		return false;
 	}
 
@@ -158,6 +250,24 @@ bool UFlow_GameFlowSubsystem::ForceTransition(FGameplayTag PhaseTag)
 
 bool UFlow_GameFlowSubsystem::DoTransition(FGameplayTag NewPhase, bool bForce)
 {
+	// RE-ENTRANCY GUARD (both force and non-force paths): re-entering a transition while one is in flight is
+	// always unsafe — a side effect (screen push, travel) that synchronously requested another transition
+	// would corrupt the FSM. Reject the re-entrant request. The lock is held for the whole method.
+	if (History && !History->BeginTransition())
+	{
+		UE_LOG(LogDP, Warning, TEXT("[GameFlow] Re-entrant transition to %s rejected (a transition is in flight)."),
+			*NewPhase.ToString());
+		return false;
+	}
+	// RAII-style release so EVERY early/late return clears the lock.
+	ON_SCOPE_EXIT
+	{
+		if (History)
+		{
+			History->EndTransition();
+		}
+	};
+
 	const FGameplayTag OldPhase = ActivePhase;
 	const UFlow_FlowStateDefinition* OldDef = OldPhase.IsValid() ? ResolvePhaseDefinition(OldPhase) : nullptr;
 	const UFlow_FlowStateDefinition* NewDef = ResolvePhaseDefinition(NewPhase);
@@ -177,6 +287,12 @@ bool UFlow_GameFlowSubsystem::DoTransition(FGameplayTag NewPhase, bool bForce)
 	//    the new phase consistently.
 	PreviousPhase = OldPhase;
 	ActivePhase = NewPhase;
+
+	// Record the entered phase on the bounded back-stack so GoBack can pop overlay phases.
+	if (History)
+	{
+		History->PushPhase(NewPhase);
+	}
 
 	// 3) Enter the new phase (travel / push screen / push input mode / pause).
 	ApplyEnterEffects(NewDef, NewPhase);
@@ -252,6 +368,15 @@ void UFlow_GameFlowSubsystem::TravelForPhase(const UFlow_FlowStateDefinition* De
 	}
 
 	const FString URL = Def->TravelOptions.IsEmpty() ? MapName : (MapName + Def->TravelOptions);
+
+	// Pre-travel: capture carry-over data and announce the travel start through the coordinator BEFORE the
+	// engine tears the world down. Seamless/relative is chosen when the phase is NOT absolute and we are a
+	// client (a client ClientTravel honours seamless); a host OpenLevel is absolute by definition here.
+	const bool bSeamless = !Def->bAbsoluteTravel;
+	if (TravelCoordinator)
+	{
+		TravelCoordinator->PrepareTravel(ActivePhase, bSeamless);
+	}
 
 	if (HasTravelAuthority())
 	{
@@ -416,8 +541,68 @@ bool UFlow_GameFlowSubsystem::IsPaused() const
 }
 
 // ---------------------------------------------------------------------------------------------------
+// Back-stack + flow guards (additive)
+// ---------------------------------------------------------------------------------------------------
+
+bool UFlow_GameFlowSubsystem::GoBack()
+{
+	if (!History || !History->CanGoBack())
+	{
+		return false;
+	}
+
+	// Pop the current phase; the new top is the phase to return to. We use ForceTransition because a
+	// back-pop (dismiss a Pause overlay, leave a NetError screen) is recovery/overlay-dismiss and must not
+	// be re-vetoed by guards or the allowed-transition edge set.
+	const FGameplayTag BackTarget = History->PopForBack();
+	if (!BackTarget.IsValid())
+	{
+		return false;
+	}
+
+	// ForceTransition will PushPhase(BackTarget) again, leaving the stack consistent (top == BackTarget).
+	return ForceTransition(BackTarget);
+}
+
+bool UFlow_GameFlowSubsystem::PassesFlowGuards(FGameplayTag From, FGameplayTag To, FGameplayTag& OutDenyReason) const
+{
+	const UFlow_DeveloperSettings* Settings = UFlow_DeveloperSettings::Get();
+	if (Settings && !Settings->bEnableTransitionGuards)
+	{
+		return true; // Guard step disabled by config.
+	}
+
+	UDP_ServiceLocatorSubsystem* Locator = GetLocator();
+	if (!Locator)
+	{
+		return true; // No locator (very early): nothing to consult.
+	}
+
+	// The locator binds ONE provider per key. The built-in guard is registered under Service_FlowGuard; a
+	// project that needs several guards registers a composite that fans out. Consult the bound provider.
+	UObject* GuardObj = Locator->ResolveService(FlowTags::Service_FlowGuard);
+	if (!GuardObj || !GuardObj->Implements<USeam_FlowGuard>())
+	{
+		return true; // No guard registered.
+	}
+
+	FGameplayTag Reason;
+	const bool bAllowed = ISeam_FlowGuard::Execute_CanTransition(GuardObj, From, To, Reason);
+	if (!bAllowed)
+	{
+		OutDenyReason = Reason;
+	}
+	return bAllowed;
+}
+
+// ---------------------------------------------------------------------------------------------------
 // Resolution helpers
 // ---------------------------------------------------------------------------------------------------
+
+const UFlow_FlowStateDefinition* UFlow_GameFlowSubsystem::ResolvePhaseDefinitionForLoading(FGameplayTag Phase) const
+{
+	return ResolvePhaseDefinition(Phase);
+}
 
 const UFlow_FlowStateDefinition* UFlow_GameFlowSubsystem::ResolvePhaseDefinition(FGameplayTag Phase) const
 {

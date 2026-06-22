@@ -22,4 +22,17 @@ namespace Cam_NativeTags
 	UE_DEFINE_GAMEPLAY_TAG(Service_TargetSource, "DP.Service.Camera.TargetSource");
 	UE_DEFINE_GAMEPLAY_TAG(InputMode_LockOn, "Cam.InputMode.LockOn");
 	UE_DEFINE_GAMEPLAY_TAG(Bus_TargetChanged, "DP.Bus.Camera.TargetChanged");
+
+	// ---- Additive deepening: rail / cinematic / photo / post-process / advanced shake ----
+	UE_DEFINE_GAMEPLAY_TAG(Mode_SplineRail, "Cam.Mode.SplineRail");
+	UE_DEFINE_GAMEPLAY_TAG(Mode_Cinematic, "Cam.Mode.Cinematic");
+	UE_DEFINE_GAMEPLAY_TAG(Mode_PhotoFreeFly, "Cam.Mode.PhotoFreeFly");
+	UE_DEFINE_GAMEPLAY_TAG(Mode_CinematicOverride, "Cam.Mode.CinematicOverride");
+
+	UE_DEFINE_GAMEPLAY_TAG(InputMode_PhotoMode, "Cam.InputMode.PhotoMode");
+
+	UE_DEFINE_GAMEPLAY_TAG(Service_CinematicSink, "DP.Service.Camera.CinematicSink");
+
+	UE_DEFINE_GAMEPLAY_TAG(Bus_ShakeEpicenter, "DP.Bus.Camera.ShakeEpicenter");
+	UE_DEFINE_GAMEPLAY_TAG(Bus_CameraOcclusion, "DP.Bus.Camera.Occlusion");
 }

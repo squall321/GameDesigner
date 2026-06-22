@@ -125,6 +125,103 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category = "Save")
 	bool bTrackContinueTarget = true;
 
+	// --- Matchmaking (driven by UFlow_MatchmakingController through ISeam_NetSession) ---
+
+	/** Maximum automatic retries on a transient matchmaking failure before terminal NetError. */
+	UPROPERTY(EditAnywhere, Config, Category = "Matchmaking", meta = (ClampMin = "0"))
+	int32 MatchmakingMaxRetries = 3;
+
+	/** Base delay (seconds) before the first matchmaking retry. */
+	UPROPERTY(EditAnywhere, Config, Category = "Matchmaking", meta = (ClampMin = "0.0"))
+	float RetryBaseSeconds = 2.f;
+
+	/** Exponential backoff multiplier applied per retry attempt (delay = Base * Mult^attempt). */
+	UPROPERTY(EditAnywhere, Config, Category = "Matchmaking", meta = (ClampMin = "1.0"))
+	float RetryBackoffMultiplier = 2.f;
+
+	/** Seconds between low-frequency polls of the net-session seam phase (the seam exposes no delegate). */
+	UPROPERTY(EditAnywhere, Config, Category = "Matchmaking", meta = (ClampMin = "0.05"))
+	float SessionPollIntervalSeconds = 0.5f;
+
+	/**
+	 * The phase the flow is FORCED into on a terminal matchmaking / travel / connection failure. Defaults
+	 * (in the ctor) to Flow.Phase.NetError. Set to Flow.Phase.MainMenu for a game with no NetError screen.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Matchmaking", meta = (Categories = "Flow.Phase"))
+	FGameplayTag NetErrorPhase;
+
+	// --- Travel / carry-over ---
+
+	/** The save slot the travel coordinator round-trips carry-over data through across a level travel. */
+	UPROPERTY(EditAnywhere, Config, Category = "Travel")
+	FString CarryOverSlotName = TEXT("_dp_carryover");
+
+	/**
+	 * When true, the carry-over slot is also mirrored into the player profile so a mid-session quit during
+	 * travel can recover it. When false the carry-over slot is treated as transient (deleted after restore).
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Travel")
+	bool bWriteCarryOverToProfile = true;
+
+	// --- Loading (sublevel streaming aggregation) ---
+
+	/**
+	 * Weight of the asset-preload fraction vs the sublevel-streaming fraction when the loading coordinator
+	 * combines them into one bar, in [0,1] (0 = bar is pure streaming, 1 = bar is pure preload). Default
+	 * 0.5 weights them equally. Tunable so a content-heavy phase can bias the bar toward streaming.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Loading", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float PreloadVsStreamWeight = 0.5f;
+
+	/** Seconds between aggregate-progress polls while sublevels stream in (timer-driven, no ticking). */
+	UPROPERTY(EditAnywhere, Config, Category = "Loading", meta = (ClampMin = "0.02"))
+	float StreamingPollIntervalSeconds = 0.1f;
+
+	// --- Pause / focus loss (driven via ISeam_AppLifecycle) ---
+
+	/** When true, the flow auto-pauses (standalone) on OS focus loss / app suspend. */
+	UPROPERTY(EditAnywhere, Config, Category = "Pause")
+	bool bAutoPauseOnFocusLoss = true;
+
+	/**
+	 * When false (default), the flow never engine-pauses in multiplayer on focus loss (you can't pause a
+	 * shared world) — it pushes the pause overlay and emits an autosave hint instead.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Pause")
+	bool bAllowPauseInMultiplayer = false;
+
+	// --- Boot sequence ---
+
+	/** The data-driven boot sequence the boot controller runs while in Flow.Phase.Boot (soft ref). */
+	UPROPERTY(EditAnywhere, Config, Category = "Boot",
+		meta = (AllowedClasses = "/Script/DesignPatternsGameFlow.Flow_BootSequenceDefinition"))
+	TSoftObjectPtr<class UFlow_BootSequenceDefinition> BootSequence;
+
+	/** When true, the boot sequence is skipped in PIE (jump straight to the initial phase). */
+	UPROPERTY(EditAnywhere, Config, Category = "Boot")
+	bool bSkipBootInPIE = true;
+
+	/**
+	 * Config flag the boot controller reads + clears to detect a first launch (drives bFirstRunOnly steps).
+	 * Stored in config so it persists across sessions; the controller sets it true after the first boot.
+	 */
+	UPROPERTY(Config)
+	bool bHasCompletedFirstRun = false;
+
+	// --- Flow guards / history ---
+
+	/** Maximum depth of the flow back-stack (for GoBack). Clamped >=1. */
+	UPROPERTY(EditAnywhere, Config, Category = "Flow", meta = (ClampMin = "1"))
+	int32 FlowHistoryDepth = 16;
+
+	/**
+	 * When true (default), validated (non-forced) transitions are vetoed by registered ISeam_FlowGuard
+	 * providers. When false the guard step is skipped entirely (ForceTransition always bypasses guards
+	 * regardless). A kill-switch for projects that don't want guards.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Flow")
+	bool bEnableTransitionGuards = true;
+
 	/** Convenience CDO accessor (never null at runtime for a UDeveloperSettings). */
 	static const UFlow_DeveloperSettings* Get();
 };

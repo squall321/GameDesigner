@@ -21,6 +21,7 @@
 class UAudio_SoundBankDataAsset;
 class UAudio_MixController;
 class UAudio_MixProfileDataAsset;
+class UAudio_DuckBusDataAsset;
 class UAudioComponent;
 class USoundBase;
 class USoundAttenuation;
@@ -157,6 +158,34 @@ public:
 	/** Pop a mix profile previously pushed (by the handle returned from a push). */
 	UFUNCTION(BlueprintCallable, Category = "DesignPatterns|Audio")
 	void PopMixProfile(FGuid Handle);
+
+	// ------------------------------------------------------------------------------------------------
+	//  ADDITIVE deepening — reverb zones (2) + dynamic mixing depth (3). New API only.
+	// ------------------------------------------------------------------------------------------------
+
+	/**
+	 * Push a mix profile ASSET with an explicit BLEND TIME (seconds), routed through the mix
+	 * controller's blended push. Used by reverb-zone volumes (so the reverb effect fades with the
+	 * zone) and by priority ducking that wants a custom blend. < 0 BlendTime uses the profile's own
+	 * per-override fade times. Returns the pop handle (invalid if Profile is null).
+	 */
+	FGuid PushMixProfileAssetBlended(UAudio_MixProfileDataAsset* Profile, float BlendTimeSeconds, int32 PriorityOverride = -1);
+
+	/**
+	 * Resolve a duck-bus data asset (DP.Audio.Mix.Duck child) and begin priority ducking: while held,
+	 * the duckee categories are scaled down (their voices re-mixed) WITHOUT pushing a full profile.
+	 * Returns a handle to pass to ReleaseDuck. Used by the VO subsystem so dialogue ducks music/SFX.
+	 */
+	FGuid PushDuckBus(FGameplayTag DuckBusTag);
+
+	/** Push a duck-bus data asset directly (skips registry resolution). Returns the release handle. */
+	FGuid PushDuckBusAsset(class UAudio_DuckBusDataAsset* DuckBus);
+
+	/** Release a duck previously begun by PushDuckBus/PushDuckBusAsset (no-op if unknown). */
+	void ReleaseDuck(FGuid Handle);
+
+	/** Effective owned mix controller (may be null mid-teardown). For sibling audio systems only. */
+	UAudio_MixController* GetMixController() const { return MixController; }
 
 	/** Current number of active (playing, non-virtualized) voices across all categories. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "DesignPatterns|Audio")

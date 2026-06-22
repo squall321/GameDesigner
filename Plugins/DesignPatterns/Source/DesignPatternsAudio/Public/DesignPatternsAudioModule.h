@@ -93,4 +93,38 @@ namespace AudioNativeTags
 	 * (payload: FAudio_CategoryVolumeRequest). The sound manager listens on this.
 	 */
 	DESIGNPATTERNSAUDIO_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_CategoryVolume);
+
+	// ----------------------------------------------------------------------------------------------
+	//  Additive deepening anchors (occlusion / reverb / dynamic mixing / VO / footstep / music).
+	//  All ROOT/anchor tags; concrete leaves under these are PROJECT-AUTHORED unless noted.
+	// ----------------------------------------------------------------------------------------------
+
+	/**
+	 * Service-locator key the VO/bark subsystem registers itself under (child of DP.Service).
+	 * Resolved as a TScriptInterface<IAudio_VOController>. Sibling to DP.Service.Audio.
+	 */
+	DESIGNPATTERNSAUDIO_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_AudioVO);
+
+	/** Root for VO/bark identity keys (DP.Audio.VO.*), resolved from a VO bank. PROJECT authors leaves. */
+	DESIGNPATTERNSAUDIO_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(VO);
+
+	/** Root for footstep surface keys (DP.Audio.Surface.*) used by surface banks. PROJECT authors leaves. */
+	DESIGNPATTERNSAUDIO_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Surface);
+
+	/**
+	 * Root for the data-driven priority-duck sidechain (DP.Audio.Mix.Duck.*). A duck-bus data asset
+	 * is keyed under this so VO can duck music/SFX without an explicit profile push.
+	 */
+	DESIGNPATTERNSAUDIO_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(MixDuck);
+
+	/**
+	 * The well-known voice-line caption channel string-equivalent to DesignPatternsLocalization's
+	 * DP.Bus.Loc.VoiceLine. Anchored HERE (mirror) so the audio module can re-broadcast a producer-
+	 * supplied caption payload on it WITHOUT taking a dependency on DesignPatternsLocalization. The
+	 * audio module never builds the payload itself (it is caption-agnostic); it only forwards an
+	 * opaque FInstancedStruct the VO requester attached, on this channel, so the shipped bus-driven
+	 * ULoc_SubtitleSubsystem surfaces the subtitle. Both modules UE_DEFINE the same string; gameplay
+	 * tag registration is idempotent for identical names, so this is safe.
+	 */
+	DESIGNPATTERNSAUDIO_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_LocVoiceLine);
 }

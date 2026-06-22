@@ -54,6 +54,16 @@ namespace FlowTags
 	/** Post-match results / scoreboard screen. */
 	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase_Results);
 
+	/**
+	 * Hard error-recovery phase entered (via ForceTransition) on a terminal matchmaking failure or a
+	 * travel/connection failure. Shows a NetError overlay; GoBack returns to Main Menu. Additive — no
+	 * existing phase touched.
+	 */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase_NetError);
+
+	/** Optional early splash phase before Boot's data-driven sequence (legal/logo). Designer-opt-in. */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Phase_Splash);
+
 	// --- Service-locator keys (published / resolved by this module) ---
 
 	/** Key under which this module publishes its ISeam_AppFlowController (the flow subsystem). */
@@ -77,6 +87,37 @@ namespace FlowTags
 	 * ViewModel resolves it to read final scores. Provider registered elsewhere.
 	 */
 	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_ScoreSource);
+
+	/**
+	 * Key the ISeam_NetSession adapter is published under (by the Net module). The matchmaking controller
+	 * resolves it to drive search/create/join through the seam. Provider registered elsewhere.
+	 */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_NetSession);
+
+	/**
+	 * Key the ISeam_LobbyRead carrier is published under (by the Net module). The matchmaking controller
+	 * reads readiness to advance Lobby -> Loading. Provider registered elsewhere.
+	 */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_LobbyRead);
+
+	/**
+	 * Key the ISeam_StreamingControl adapter is published under (by the LevelDirector module). The
+	 * streaming load coordinator RE-RESOLVES it per load (never cached across travel). Provider elsewhere.
+	 */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_StreamingControl);
+
+	/**
+	 * Key the ISeam_AppLifecycle adapter is published under (by the Platform module). The pause controller
+	 * registers a listener for OS suspend/resume. Provider registered elsewhere.
+	 */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_AppLifecycle);
+
+	/**
+	 * Key under which ISeam_FlowGuard providers are published. The flow consults EVERY registered guard
+	 * on a validated (non-forced) transition. This module registers its built-in UFlow_ProfileLoadedGuard;
+	 * projects register more.
+	 */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_FlowGuard);
 
 	// --- Input-mode tags pushed through the shared ISeam_InputModeArbiter ---
 	// The arbiter is owned by Platform; these are the mode identities the flow requests per phase as a
@@ -107,6 +148,67 @@ namespace FlowTags
 
 	/** Broadcast on loading-progress updates; payload FFlow_LoadingProgressPayload. */
 	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_LoadingProgress);
+
+	/** Broadcast when matchmaking state changes; payload FFlow_MatchmakingPayload. */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_MatchmakingChanged);
+
+	/** Broadcast when level travel is about to begin; payload FFlow_TravelPayload. */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_TravelStarted);
+
+	/** Broadcast on a travel/connection failure; payload FFlow_TravelPayload (bFailed=true). */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_TravelFailed);
+
+	/** Broadcast as the boot sequence advances a step; payload FFlow_BootStepPayload. */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_BootStepChanged);
+
+	/**
+	 * Broadcast (MP only) as a hint that the game should autosave because the app was suspended while the
+	 * pause controller could not engine-pause (multiplayer never hard-pauses). Payload-less. A save UI /
+	 * GameMode listens. Cosmetic/advisory; the flow never itself writes a save.
+	 */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_AutoSaveHint);
+
+	// --- Boot-step kind tags (the data-driven boot sequence's step identities) ---
+	// Each UFlow_BootStepDefinition declares one of these as its StepKind so the controller can run the
+	// appropriate built-in side effect (legal screen, preload, profile load, first-run). Anchored under
+	// Flow.BootStep. Games may author additional step kinds freely (the controller treats unknown kinds as
+	// a pure timed/preload step).
+
+	/** Legal / age-gate / logo step (timed display, optional screen). */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(BootStep_Legal);
+
+	/** Asset preload step (front-loads the step's soft refs through the loading screen). */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(BootStep_Preload);
+
+	/** Profile-load step (loads the player profile through ISeam_SaveSlotManager / the profile subsystem). */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(BootStep_ProfileLoad);
+
+	/** First-run-only step (e.g. EULA / initial settings); skipped after the first launch. */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(BootStep_FirstRun);
+
+	// --- Flow-guard deny reasons (DP.Flow.Guard.Reason.*) ---
+
+	/** A guard denied a transition because no player profile / save slot is available yet. */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GuardReason_NoProfile);
+
+	// --- Matchmaking phase tags (DP.Flow.Matchmaking.Phase.*) ---
+	// The matchmaking controller projects the net-session seam phase onto these for UI/analytics. They are
+	// matchmaking-flow phases, distinct from the top-level Flow.Phase.* FSM states.
+
+	/** No matchmaking in progress. */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(MMPhase_Idle);
+
+	/** Searching for sessions. */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(MMPhase_Searching);
+
+	/** Creating (hosting) or joining a session. */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(MMPhase_Connecting);
+
+	/** In a session (matchmaking succeeded). */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(MMPhase_Active);
+
+	/** Matchmaking failed (a retry may be scheduled, or it is terminal). */
+	DESIGNPATTERNSGAMEFLOW_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(MMPhase_Failed);
 }
 
 /**

@@ -7,13 +7,17 @@
 #include "GameplayTagContainer.h"
 #include "Containers/Ticker.h"
 #include "UObject/SoftObjectPtr.h"
+#include "UObject/WeakInterfacePtr.h"
 #include "MessageBus/DPMessage.h"
+#include "Music/Audio_MusicQuantize.h"
 #include "Audio_MusicDirectorSubsystem.generated.h"
 
 class UAudioComponent;
 class USoundBase;
 class UAudio_MusicStateDataAsset;
 class UAudio_MusicEventMapDataAsset;
+class UQuartzClockHandle;
+class ISeam_SimClock;
 struct FAudio_MusicEventRule;
 
 /**
@@ -151,6 +155,36 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Music|Director")
 	float GetIntensity() const { return CurrentIntensity; }
 
+	// ----------------------------------------------------------------------------------------------
+	//  MUSIC DEPTH (6) ADDITIVE: bar-synced (quantized) transitions + optional Quartz clock.
+	//  All NEW; the shipped API above is unchanged. Without tempo metadata or a Quartz clock these
+	//  fall back to the existing immediate transition, so default content behaves identically.
+	// ----------------------------------------------------------------------------------------------
+
+	/**
+	 * Crossfade to StateTag, but DEFER the transition to the chosen musical boundary so a horizontal
+	 * re-sequence lands on the beat/bar/phrase. Immediate behaves exactly like SetMusicState. The
+	 * pending request supersedes any earlier still-pending request.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Music|Director")
+	void SetMusicStateQuantized(FGameplayTag StateTag, EAudio_MusicQuantize Quantize);
+
+	/** Set the adaptive intensity, deferred to the chosen musical boundary (Immediate == SetIntensity). */
+	UFUNCTION(BlueprintCallable, Category = "Music|Director")
+	void SetIntensityQuantized(float Intensity, EAudio_MusicQuantize Quantize);
+
+	/**
+	 * Provide a caller-owned Quartz clock handle so quantized transitions snap to the engine Quartz
+	 * metronome instead of the internal tempo accumulator. Pass null to detach and use the fallback.
+	 * The director NEVER creates or owns a Quartz clock; it only observes one a project supplies.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Music|Director")
+	void SetQuartzClock(UQuartzClockHandle* Clock);
+
+	/** Provide the simulation clock seam so the fallback tempo phase respects pause / time-dilation. */
+	UFUNCTION(BlueprintCallable, Category = "Music|Director")
+	void SetSimClock(const TScriptInterface<ISeam_SimClock>& InClock);
+
 	//~ Begin UDP_GameInstanceSubsystem
 	virtual FString GetDPDebugString_Implementation() const override;
 	//~ End UDP_GameInstanceSubsystem
@@ -190,7 +224,52 @@ private:
 	/** FTSTicker handle for the per-frame crossfade/intensity drive. */
 	FTSTicker::FDelegateHandle TickerHandle;
 
+	// ---- MUSIC DEPTH (6) quantization state (all NEW) ----
+
+	/** A pending quantized state change (invalid when none). Applied at the next matching boundary. */
+	UPROPERTY(Transient)
+	FGameplayTag PendingStateTag;
+
+	/** Quantization boundary for the pending state change. */
+	EAudio_MusicQuantize PendingStateQuantize = EAudio_MusicQuantize::Immediate;
+
+	/** True when a pending intensity change is queued. */
+	bool bHasPendingIntensity = false;
+
+	/** Pending intensity target (applied at PendingIntensityQuantize boundary). */
+	float PendingIntensityValue = 0.f;
+
+	/** Quantization boundary for the pending intensity change. */
+	EAudio_MusicQuantize PendingIntensityQuantize = EAudio_MusicQuantize::Immediate;
+
+	/**
+	 * Internal tempo PHASE in seconds since the active state began, advanced each tick by the sim clock
+	 * (or real delta when no clock), used to detect beat/bar/phrase boundaries in the FTSTicker
+	 * fallback. Reset on each state change so boundaries are measured from the state start.
+	 */
+	double TempoPhaseSeconds = 0.0;
+
+	/** Phase value at the previous tick, so a boundary crossing can be detected this tick. */
+	double LastTempoPhaseSeconds = 0.0;
+
+	/** Optional caller-owned Quartz clock (weak: we never own it). When valid it drives boundaries. */
+	UPROPERTY(Transient)
+	TWeakObjectPtr<UQuartzClockHandle> QuartzClock;
+
+	/** Optional sim clock seam for pause/time-dilation-aware fallback phase. */
+	TWeakInterfacePtr<ISeam_SimClock> SimClock;
+
 	// ---- Internals ----
+
+	/** Advance the tempo phase and apply any pending quantized transition whose boundary just passed. */
+	void AdvanceQuantization(float DeltaTime);
+
+	/** True if a beat/bar/phrase boundary was crossed between LastTempoPhaseSeconds and TempoPhaseSeconds. */
+	bool DidCrossBoundary(EAudio_MusicQuantize Quantize) const;
+
+	/** Apply (and clear) any pending state/intensity changes. */
+	void FlushPendingState();
+	void FlushPendingIntensity();
 
 	/** Per-frame: advance all voice fades, ease intensity, retire finished voices. */
 	bool Tick(float DeltaTime);

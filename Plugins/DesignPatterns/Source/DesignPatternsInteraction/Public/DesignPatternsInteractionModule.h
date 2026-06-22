@@ -27,9 +27,33 @@ namespace InteractNativeTags
 	// Bus channel: broadcast on the server when an interaction was cancelled / interrupted.
 	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_Interact_Cancel);
 
+	// Bus channel: broadcast on the server when an interaction request was denied (verb unavailable).
+	// Carries an FInteract_DenialPayload (see Types/Interact_AvailabilityTypes.h).
+	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_Interact_Denied);
+
+	// Bus channel: broadcast on the server when a batch ("interact with all") request completed.
+	// Carries an FInteract_BatchPayload.
+	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_Interact_BatchComplete);
+
 	// Command identity: the optional undoable/replayable "perform interaction" command.
 	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Cmd_Interact);
 
+	// Command identity: the multi-target "interact with all" batch command.
+	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Cmd_BatchInteract);
+
 	// Data identity root for verb definitions: DP.Data.Interact.Verb (concrete verbs are children).
 	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Data_Interact_Verb);
+
+	// ---- Availability reasons (DP.Interact.Reason.*) ----
+	// Carried across the ISeam_InteractAvailability seam (which uses only FGameplayTag for the reason)
+	// and surfaced in prompts / on DP.Bus.Interact.Denied. Anchored under a DP.Interact.Reason root so
+	// hierarchy matching works for project-defined sub-reasons.
+
+	// Generic "the reason root" — a project may match the whole family.
+	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reason_Locked);
+	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reason_NoKey);
+	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reason_TooFar);
+	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reason_NotEnoughResource);
+	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reason_OnCooldown);
+	DESIGNPATTERNSINTERACTION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reason_Full);
 }

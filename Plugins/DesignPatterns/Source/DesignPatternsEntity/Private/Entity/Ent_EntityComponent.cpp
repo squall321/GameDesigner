@@ -644,6 +644,36 @@ void UEnt_EntityComponent::UninitializeTrait(UEnt_Trait* Trait)
 	}
 }
 
+void UEnt_EntityComponent::SetTraitStatePayload(FGameplayTag TraitTag, FSeam_NetValue Payload)
+{
+	// AUTHORITY GUARD: replicated trait state is server-authoritative.
+	if (!HasEntityAuthority() || !TraitTag.IsValid())
+	{
+		return;
+	}
+	FEnt_TraitEntry* Entry = ReplicatedTraits.FindByTraitClassTag(TraitTag);
+	if (!Entry)
+	{
+		UE_LOG(LogDP, Verbose, TEXT("[Entity] SetTraitStatePayload: no replicated entry for trait '%s' on '%s'."),
+			*TraitTag.ToString(), *GetNameSafe(GetOwner()));
+		return;
+	}
+	if (Entry->StatePayload != Payload)
+	{
+		Entry->StatePayload = Payload;
+		ReplicatedTraits.MarkItemDirty(*Entry);
+	}
+}
+
+FSeam_NetValue UEnt_EntityComponent::GetTraitStatePayload(FGameplayTag TraitTag) const
+{
+	if (const FEnt_TraitEntry* Entry = ReplicatedTraits.FindByTraitClassTag(TraitTag))
+	{
+		return Entry->StatePayload;
+	}
+	return FSeam_NetValue();
+}
+
 void UEnt_EntityComponent::HandleReplicatedTraitChange()
 {
 	// Client: a trait entry was added/changed/removed. Reconcile the live mirror and notify.

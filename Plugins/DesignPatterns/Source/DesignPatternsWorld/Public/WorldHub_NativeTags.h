@@ -30,6 +30,15 @@ namespace WorldHubNativeTags
 	/** Service key under which dynamic state providers (IWorldHub_StateProvider) aggregate. */
 	DESIGNPATTERNSWORLD_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_WorldHub_Provider);
 
+	/** Service key for the hub history / rewind seam (ISeam_HubHistory) exposed by the history subsystem. */
+	DESIGNPATTERNSWORLD_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_WorldHub_History);
+
+	/** Service key for the append-only mutation event log (also ISeam_HubHistory). */
+	DESIGNPATTERNSWORLD_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_WorldHub_EventLog);
+
+	/** Service key for the faction-vs-faction standing matrix (ISeam_FactionStanding). */
+	DESIGNPATTERNSWORLD_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_WorldHub_FactionMatrix);
+
 	// --- Message-bus channels (children of the core DP.Bus root) ---
 
 	/** Bus channel: broadcast when any hub flag value changes (payload carries key + scope). */
@@ -40,4 +49,22 @@ namespace WorldHubNativeTags
 
 	/** Bus channel: broadcast when a scoped blackboard value changes (key + scope + source). */
 	DESIGNPATTERNSWORLD_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_WorldHub_BlackboardChanged);
+
+	/** Bus channel: broadcast when the history subsystem captures a frame (payload carries frame index + label). */
+	DESIGNPATTERNSWORLD_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_WorldHub_FrameCaptured);
+
+	/** Bus channel: broadcast when world state is rewound to a frame/checkpoint (payload carries label). */
+	DESIGNPATTERNSWORLD_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_WorldHub_Rewound);
+
+	/** Bus channel: broadcast when a faction standing changes (payload carries the composed key + value). */
+	DESIGNPATTERNSWORLD_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_WorldHub_StandingChanged);
+
+	// --- Composed-key roots for projected sub-systems (children of the project flag root) ---
+
+	/**
+	 * Root under which the faction-matrix component composes its per-(A,B) hub keys
+	 * (DP.WorldHub.Faction.Standing.<A>.<B>). Anchored in C++ so MatchesTag works at startup and so
+	 * subscription filters can target the whole faction sub-tree.
+	 */
+	DESIGNPATTERNSWORLD_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Key_WorldHub_FactionStanding);
 }

@@ -4,6 +4,10 @@
 #include "Director/Cam_CameraModeStack.h"
 #include "Director/Cam_CameraModifier.h"
 #include "Mode/Cam_StandardModes.h"
+#include "Mode/Cam_CinematicMode.h"
+#include "Collision/Cam_CameraCollisionProbe.h"
+#include "PostProcess/Cam_PostProcessModifier.h"
+#include "PostProcess/Cam_PostProcessProfile.h"
 #include "Settings/Cam_DeveloperSettings.h"
 #include "Cam_NativeTags.h"
 
@@ -12,6 +16,9 @@
 #include "Services/DPServiceLocatorSubsystem.h"
 #include "Services/DPServiceTypes.h"
 #include "Input/Seam_InputModeArbiter.h"
+#include "Identity/Seam_EntityId.h"
+#include "Identity/Seam_EntityIdentity.h"
+#include "MessageBus/DPMessageBusSubsystem.h"
 
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
@@ -19,6 +26,12 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Curves/CurveFloat.h"
+
+#if __has_include("StructUtils/InstancedStruct.h")
+#include "StructUtils/InstancedStruct.h"
+#else
+#include "InstancedStruct.h"
+#endif
 
 UCam_CameraDirectorComponent::UCam_CameraDirectorComponent()
 {
@@ -82,15 +95,20 @@ void UCam_CameraDirectorComponent::EndPlay(const EEndPlayReason::Type EndPlayRea
 
 	UnregisterProviderService();
 
-	// Remove our modifier from the manager so a respawned director can re-add cleanly.
-	if (UCam_CameraModifier* Mod = Modifier.Get())
+	// Remove our modifier(s) from the manager so a respawned director can re-add cleanly.
+	if (APlayerCameraManager* Manager = ResolveCameraManager())
 	{
-		if (APlayerCameraManager* Manager = ResolveCameraManager())
+		if (UCam_CameraModifier* Mod = Modifier.Get())
 		{
 			Manager->RemoveCameraModifier(Mod);
 		}
-		Modifier.Reset();
+		if (UCam_PostProcessModifier* PPMod = PostProcessModifier.Get())
+		{
+			Manager->RemoveCameraModifier(PPMod);
+		}
 	}
+	Modifier.Reset();
+	PostProcessModifier.Reset();
 
 	if (ModeStack)
 	{
@@ -133,21 +151,178 @@ void UCam_CameraDirectorComponent::TickComponent(float DeltaTime, ELevelTick Tic
 
 	if (ModeStack->IsEmpty())
 	{
-		// No modes: let the manager's own POV stand.
+		// No modes: let the manager's own POV stand. Clear post-process too so we contribute nothing.
 		Mod->ClearDesiredView();
+		if (UCam_PostProcessModifier* PPMod = PostProcessModifier.Get())
+		{
+			PPMod->ClearDesiredPostProcess();
+		}
 		LastAppliedView = Fallback;
 		bHasLastView = true;
 		UpdateInputModeForTopMode();
 		return;
 	}
 
-	const FCam_CameraView Blended = ModeStack->EvaluateStack(DeltaTime, Context, Fallback);
+	FCam_CameraView Blended = ModeStack->EvaluateStack(DeltaTime, Context, Fallback);
+
+	// Post-evaluation collision/occlusion stage: pull the camera off geometry and (optionally) broadcast
+	// a cosmetic occlusion alpha. Runs AFTER the blend and never touches APlayerCameraManager.
+	Blended = RunCollisionStage(Context, Blended, DeltaTime);
+
 	Mod->SetDesiredView(Blended);
+
+	// Post-process stage: resolve the active mode's DOF/vignette/grain preset and feed the 2nd modifier.
+	RunPostProcessStage();
 
 	LastAppliedView = Blended;
 	bHasLastView = true;
 
 	UpdateInputModeForTopMode();
+}
+
+FCam_CameraView UCam_CameraDirectorComponent::RunCollisionStage(const FCam_ViewContext& Context, const FCam_CameraView& Blended, float DeltaTime)
+{
+	if (!CollisionProbe)
+	{
+		return Blended;
+	}
+
+	FCam_CameraView Adjusted;
+	FCam_CollisionResult Result;
+	CollisionProbe->ResolveCollision(this, Context, Blended, DeltaTime, Adjusted, Result);
+
+	if (bBroadcastOcclusion && Result.bTargetOccluded)
+	{
+		if (UDP_MessageBusSubsystem* Bus = FDP_SubsystemStatics::GetGameInstanceSubsystem<UDP_MessageBusSubsystem>(this))
+		{
+			FCam_OcclusionEvent Event;
+			Event.OcclusionAlpha = Result.OcclusionAlpha;
+			// Best-effort: read the view target's stable id if it exposes the identity seam.
+			if (const AActor* TargetActor = Context.ViewTarget.Get())
+			{
+				if (TargetActor->GetClass()->ImplementsInterface(USeam_EntityIdentity::StaticClass()))
+				{
+					Event.TargetId = ISeam_EntityIdentity::Execute_GetEntityId(const_cast<AActor*>(TargetActor));
+				}
+			}
+			Bus->BroadcastPayload(Cam_NativeTags::Bus_CameraOcclusion, FInstancedStruct::Make(Event), GetOwner());
+		}
+	}
+
+	return Adjusted;
+}
+
+void UCam_CameraDirectorComponent::RunPostProcessStage()
+{
+	UCam_PostProcessProfile* Profile = ResolvePostProcessProfile();
+	if (!Profile)
+	{
+		return; // no profile authored: leave the post-process pipeline untouched.
+	}
+
+	UCam_PostProcessModifier* PPMod = EnsurePostProcessModifier();
+	if (!PPMod)
+	{
+		return;
+	}
+
+	FCam_PostProcessSettings Settings;
+	if (Profile->ResolveForMode(GetActiveModeTag_Implementation(), Settings))
+	{
+		PPMod->SetDesiredPostProcess(Settings);
+	}
+	else
+	{
+		PPMod->ClearDesiredPostProcess();
+	}
+}
+
+UCam_PostProcessProfile* UCam_CameraDirectorComponent::ResolvePostProcessProfile()
+{
+	if (bPostProcessProfileResolved)
+	{
+		return CachedPostProcessProfile;
+	}
+	bPostProcessProfileResolved = true;
+	if (!PostProcessProfileOverride.IsNull())
+	{
+		CachedPostProcessProfile = PostProcessProfileOverride.LoadSynchronous();
+	}
+	return CachedPostProcessProfile;
+}
+
+UCam_PostProcessModifier* UCam_CameraDirectorComponent::EnsurePostProcessModifier()
+{
+	if (UCam_PostProcessModifier* Existing = PostProcessModifier.Get())
+	{
+		return Existing;
+	}
+	APlayerCameraManager* Manager = ResolveCameraManager();
+	if (!Manager)
+	{
+		return nullptr;
+	}
+	UCameraModifier* New = Manager->AddNewCameraModifier(UCam_PostProcessModifier::StaticClass());
+	UCam_PostProcessModifier* Typed = Cast<UCam_PostProcessModifier>(New);
+	if (Typed)
+	{
+		PostProcessModifier = Typed;
+		UE_LOG(LogDP, Verbose, TEXT("[Camera] Installed post-process modifier on %s."), *GetNameSafe(Manager));
+	}
+	return Typed;
+}
+
+//~ ISeam_CinematicCameraSink ------------------------------------------------------------------
+
+FGuid UCam_CameraDirectorComponent::BeginCinematicOverride_Implementation(FTransform POV, float FOV, float BlendInTime)
+{
+	if (!ModeStack)
+	{
+		return FGuid();
+	}
+
+	// Build a transient override mode owned by the stack; seed its blend times and initial POV.
+	UCam_CinematicOverrideMode* Mode = NewObject<UCam_CinematicOverrideMode>(ModeStack, UCam_CinematicOverrideMode::StaticClass());
+	if (!Mode)
+	{
+		return FGuid();
+	}
+	Mode->SetModeTag(Cam_NativeTags::Mode_CinematicOverride);
+	Mode->ConfigureBlend(FMath::Max(BlendInTime, 0.f), /*default out*/ 0.5f);
+	Mode->SetOverride(POV, FOV);
+
+	const FGuid RequestId = ModeStack->PushMode(Mode, CinematicOverridePriority, BuildViewContext());
+	UE_LOG(LogDP, Log, TEXT("[Camera] Begin cinematic override on %s (blendIn=%.2f)."), *GetNameSafe(GetOwner()), BlendInTime);
+	return RequestId;
+}
+
+void UCam_CameraDirectorComponent::UpdateCinematicOverride_Implementation(FGuid Handle, FTransform POV, float FOV)
+{
+	if (!ModeStack || !Handle.IsValid())
+	{
+		return;
+	}
+	// Reach the override mode: it is at the cinematic priority. We locate it by checking the top mode
+	// (overrides are highest priority); if it is the override, drive it.
+	if (UCam_CinematicOverrideMode* Override = Cast<UCam_CinematicOverrideMode>(ModeStack->GetTopMode()))
+	{
+		Override->SetOverride(POV, FOV);
+	}
+}
+
+void UCam_CameraDirectorComponent::EndCinematicOverride_Implementation(FGuid Handle, float BlendOutTime)
+{
+	if (!ModeStack || !Handle.IsValid())
+	{
+		return;
+	}
+	// Seed the desired blend-out on the mode before popping so the stack eases its weight out.
+	if (UCam_CinematicOverrideMode* Override = Cast<UCam_CinematicOverrideMode>(ModeStack->GetTopMode()))
+	{
+		Override->ConfigureBlend(Override->GetBlendInTime(), FMath::Max(BlendOutTime, 0.f));
+	}
+	ModeStack->PopMode(Handle);
+	UE_LOG(LogDP, Log, TEXT("[Camera] End cinematic override on %s (blendOut=%.2f)."), *GetNameSafe(GetOwner()), BlendOutTime);
 }
 
 //~ ICam_CameraModeProvider --------------------------------------------------------------------
@@ -353,7 +528,13 @@ void UCam_CameraDirectorComponent::RegisterAsProviderService()
 	const bool bOk = Locator->RegisterService(Cam_NativeTags::Service_ModeProvider, this,
 		EDP_ServiceLifetime::WeakObserved, /*bAllowOverride=*/true);
 	bRegisteredService = bOk;
-	UE_LOG(LogDP, Verbose, TEXT("[Camera] Registered mode-provider service (ok=%d)."), bOk);
+
+	// Also publish the cinematic-sink seam under its own key so cutscenes can blend the local camera
+	// without knowing this concrete type. Same WeakObserved lifetime so we never leak across travel.
+	Locator->RegisterService(Cam_NativeTags::Service_CinematicSink, this,
+		EDP_ServiceLifetime::WeakObserved, /*bAllowOverride=*/true);
+
+	UE_LOG(LogDP, Verbose, TEXT("[Camera] Registered mode-provider + cinematic-sink services (ok=%d)."), bOk);
 }
 
 void UCam_CameraDirectorComponent::UnregisterProviderService()
@@ -368,6 +549,10 @@ void UCam_CameraDirectorComponent::UnregisterProviderService()
 		if (Locator->ResolveService(Cam_NativeTags::Service_ModeProvider) == this)
 		{
 			Locator->UnregisterService(Cam_NativeTags::Service_ModeProvider);
+		}
+		if (Locator->ResolveService(Cam_NativeTags::Service_CinematicSink) == this)
+		{
+			Locator->UnregisterService(Cam_NativeTags::Service_CinematicSink);
 		}
 	}
 	bRegisteredService = false;

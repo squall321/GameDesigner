@@ -5,7 +5,13 @@
 #include "Interfaces/Interact_Interactable.h"
 #include "Focus/Interact_FocusStrategy.h"
 #include "Data/Interact_VerbDefinition.h"
+#include "Detection/Interact_QueryShapeStrategy.h"
+#include "Util/Interact_AvailabilityHelper.h"
+#include "Types/Interact_AvailabilityTypes.h"
 #include "DesignPatternsInteractionModule.h"
+
+#include "Interact/Seam_InteractAvailability.h"
+#include "Identity/Seam_EntityIdentity.h"
 
 #include "Core/DPLog.h"
 #include "Core/DPSubsystemLibrary.h"
@@ -103,8 +109,36 @@ void UInteract_InteractorComponent::UpdateLocalFocus()
 	TArray<FInteract_Candidate> Candidates;
 	DetectCandidates(Query, Candidates);
 
+	// ADDITIVE: snapshot the detected actors (in detection order) so a focus cycler can step through
+	// them without re-tracing.
+	LocalCandidateActors.Reset(Candidates.Num());
+	for (const FInteract_Candidate& C : Candidates)
+	{
+		LocalCandidateActors.Add(C.Actor);
+	}
+
 	int32 BestIndex = INDEX_NONE;
-	if (FocusStrategy && Candidates.Num() > 0)
+
+	// ADDITIVE: a local focus override (focus cycling / cursor pick) wins over the focus strategy, as
+	// long as the overridden actor is still among the detected candidates (so it stays reachable).
+	if (LocalFocusOverride.IsValid())
+	{
+		for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+		{
+			if (Candidates[Index].Actor.Get() == LocalFocusOverride.Get())
+			{
+				BestIndex = Index;
+				break;
+			}
+		}
+		if (BestIndex == INDEX_NONE)
+		{
+			// The override left the candidate set; drop it and fall back to the strategy.
+			LocalFocusOverride.Reset();
+		}
+	}
+
+	if (BestIndex == INDEX_NONE && FocusStrategy && Candidates.Num() > 0)
 	{
 		BestIndex = FocusStrategy->SelectBestCandidate(Candidates, Query);
 	}
@@ -263,6 +297,17 @@ EInteract_Result UInteract_InteractorComponent::ServerBeginInteractAuthoritative
 	if (!ResolveEffectiveVerb(Interactable, Query, EffectiveVerb))
 	{
 		return EInteract_Result::UnsupportedVerb;
+	}
+
+	// ADDITIVE: availability/usability gate via the optional ISeam_InteractAvailability seam (locks /
+	// wallet / cooldown). When the seam is absent this is a no-op. Denial is surfaced on the bus.
+	{
+		FGameplayTag ReasonTag;
+		if (!CheckVerbAvailability(Interactable, EffectiveVerb, ReasonTag))
+		{
+			BroadcastDenied(TargetActor, EffectiveVerb, ReasonTag);
+			return EInteract_Result::Rejected;
+		}
 	}
 
 	// Build the authoritative context and call the interactable's authority-only BeginInteract.
@@ -432,109 +477,139 @@ void UInteract_InteractorComponent::DetectCandidates(const FInteract_Query& Quer
 		return;
 	}
 
-	// Overlap a sphere of Range centered on the view location, on the configured channel.
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(Interact_Detect), /*bTraceComplex=*/false, Owner);
-	Params.AddIgnoredActor(Owner);
+	const int32 Cap = FMath::Max(1, MaxCandidates);
 
-	TArray<FOverlapResult> Overlaps;
-	const FCollisionShape Sphere = FCollisionShape::MakeSphere(Range);
-	World->OverlapMultiByChannel(
-		Overlaps,
-		Query.ViewLocation,
-		FQuat::Identity,
-		Detection.Channel.GetValue(),
-		Sphere,
-		Params);
-
-	const float CosCone = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Detection.ConeHalfAngleDeg, 0.f, 180.f)));
-
-	// De-dupe interactables across multiple overlapping components of the same actor.
-	TSet<UObject*> SeenInteractables;
-
-	for (const FOverlapResult& Overlap : Overlaps)
+	// BROAD-PHASE: gather raw candidate actors. An assigned QueryShape supplies them (sphere/line/
+	// cone/cursor); when none is set we reproduce the built-in sphere overlap so behaviour is
+	// byte-for-byte the same as before this additive layer.
+	TArray<TWeakObjectPtr<AActor>> RawActors;
+	if (QueryShape)
 	{
-		if (OutCandidates.Num() >= FMath::Max(1, MaxCandidates))
+		QueryShape->GatherCandidateActors(this, Query, Detection, Cap, RawActors);
+	}
+	else
+	{
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(Interact_Detect), /*bTraceComplex=*/false, Owner);
+		Params.AddIgnoredActor(Owner);
+
+		TArray<FOverlapResult> Overlaps;
+		const FCollisionShape Sphere = FCollisionShape::MakeSphere(Range);
+		World->OverlapMultiByChannel(
+			Overlaps, Query.ViewLocation, FQuat::Identity, Detection.Channel.GetValue(), Sphere, Params);
+
+		RawActors.Reserve(Overlaps.Num());
+		for (const FOverlapResult& Overlap : Overlaps)
+		{
+			if (AActor* HitActor = Overlap.GetActor())
+			{
+				RawActors.Add(HitActor);
+			}
+		}
+	}
+
+	// NARROW-PHASE: run the SHARED per-candidate scoring on the gathered actors so both detection
+	// paths (and client vs server) produce identical FInteract_Candidate metadata.
+	TSet<UObject*> SeenInteractables;
+	for (const TWeakObjectPtr<AActor>& WeakActor : RawActors)
+	{
+		if (OutCandidates.Num() >= Cap)
 		{
 			break;
 		}
 
-		AActor* HitActor = Overlap.GetActor();
-		if (!HitActor || HitActor == Owner)
+		AActor* HitActor = WeakActor.Get();
+		if (!HitActor)
 		{
 			continue;
 		}
 
-		UObject* Interactable = FindInteractableOn(HitActor);
-		if (!Interactable || !Interactable->Implements<UInteract_Interactable>())
+		FInteract_Candidate Candidate;
+		if (!ScoreCandidateActor(HitActor, Query, Candidate))
 		{
 			continue;
 		}
+
+		UObject* Interactable = Candidate.InteractableObject.Get();
 		if (SeenInteractables.Contains(Interactable))
 		{
 			continue;
 		}
-
-		// Read-only eligibility gate.
-		if (!IInteract_Interactable::Execute_CanInteract(Interactable, Query))
-		{
-			continue;
-		}
-
-		// Geometry against the actor's focus point (its origin; interactables can refine via prompt).
-		const FVector FocusLoc = HitActor->GetActorLocation();
-		const FVector ToTarget = FocusLoc - Query.ViewLocation;
-		const float Dist = ToTarget.Size();
-		if (Dist > Range)
-		{
-			continue;
-		}
-
-		const FVector Dir = (Dist > KINDA_SMALL_NUMBER) ? (ToTarget / Dist) : Query.ViewDirection;
-		const float Dot = FVector::DotProduct(Query.ViewDirection, Dir);
-
-		// Cone gate.
-		if (Dot < CosCone)
-		{
-			continue;
-		}
-
-		const float AngleDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Dot, -1.f, 1.f)));
-
-		// Line-of-sight gate (optional). A blocking hit before the target fails the check.
-		bool bHasLOS = true;
-		if (Detection.bRequireLineOfSight)
-		{
-			FHitResult LosHit;
-			FCollisionQueryParams LosParams(SCENE_QUERY_STAT(Interact_LOS), /*bTraceComplex=*/false, Owner);
-			LosParams.AddIgnoredActor(Owner);
-			LosParams.AddIgnoredActor(HitActor); // we want to know if anything ELSE blocks us.
-			const bool bBlocked = World->LineTraceTestByChannel(
-				Query.ViewLocation, FocusLoc, Detection.Channel.GetValue(), LosParams);
-			bHasLOS = !bBlocked;
-
-			if (!bHasLOS)
-			{
-				// Hard requirement: drop occluded candidates entirely.
-				continue;
-			}
-		}
-
-		FInteract_Candidate Candidate;
-		Candidate.Actor = HitActor;
-		Candidate.InteractableObject = Interactable;
-		Candidate.FocusLocation = FocusLoc;
-		Candidate.Distance = Dist;
-		Candidate.AngleDeg = AngleDeg;
-		Candidate.bHasLineOfSight = bHasLOS;
-
-		// Pull selection priority from the interactable's supported-verb default if it exposes one
-		// via the prompt (bEnabled false still allows focus but a disabled prompt). Priority defaults
-		// to 0 unless the interactable encodes it; kept here as the actor's net priority hint.
-		Candidate.Priority = 0;
-
 		SeenInteractables.Add(Interactable);
-		OutCandidates.Add(Candidate);
+		OutCandidates.Add(MoveTemp(Candidate));
 	}
+}
+
+bool UInteract_InteractorComponent::ScoreCandidateActor(AActor* Actor, const FInteract_Query& Query, FInteract_Candidate& OutCandidate) const
+{
+	const UWorld* World = GetWorld();
+	AActor* Owner = GetOwner();
+	if (!World || !Owner || !Actor || Actor == Owner)
+	{
+		return false;
+	}
+
+	UObject* Interactable = FindInteractableOn(Actor);
+	if (!Interactable || !Interactable->Implements<UInteract_Interactable>())
+	{
+		return false;
+	}
+
+	// Read-only eligibility gate.
+	if (!IInteract_Interactable::Execute_CanInteract(Interactable, Query))
+	{
+		return false;
+	}
+
+	const float Range = FMath::Max(0.f, Detection.Range);
+
+	// Geometry against the actor's focus point (its origin; interactables can refine via prompt).
+	const FVector FocusLoc = Actor->GetActorLocation();
+	const FVector ToTarget = FocusLoc - Query.ViewLocation;
+	const float Dist = ToTarget.Size();
+	if (Dist > Range)
+	{
+		return false;
+	}
+
+	const FVector Dir = (Dist > KINDA_SMALL_NUMBER) ? (ToTarget / Dist) : Query.ViewDirection;
+	const float Dot = FVector::DotProduct(Query.ViewDirection, Dir);
+
+	// Cone gate.
+	const float CosCone = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Detection.ConeHalfAngleDeg, 0.f, 180.f)));
+	if (Dot < CosCone)
+	{
+		return false;
+	}
+
+	const float AngleDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Dot, -1.f, 1.f)));
+
+	// Line-of-sight gate (optional). A blocking hit before the target fails the check.
+	bool bHasLOS = true;
+	if (Detection.bRequireLineOfSight)
+	{
+		FCollisionQueryParams LosParams(SCENE_QUERY_STAT(Interact_LOS), /*bTraceComplex=*/false, Owner);
+		LosParams.AddIgnoredActor(Owner);
+		LosParams.AddIgnoredActor(Actor); // we want to know if anything ELSE blocks us.
+		const bool bBlocked = World->LineTraceTestByChannel(
+			Query.ViewLocation, FocusLoc, Detection.Channel.GetValue(), LosParams);
+		bHasLOS = !bBlocked;
+
+		if (!bHasLOS)
+		{
+			// Hard requirement: drop occluded candidates entirely.
+			return false;
+		}
+	}
+
+	OutCandidate = FInteract_Candidate();
+	OutCandidate.Actor = Actor;
+	OutCandidate.InteractableObject = Interactable;
+	OutCandidate.FocusLocation = FocusLoc;
+	OutCandidate.Distance = Dist;
+	OutCandidate.AngleDeg = AngleDeg;
+	OutCandidate.bHasLineOfSight = bHasLOS;
+	OutCandidate.Priority = 0;
+	return true;
 }
 
 UObject* UInteract_InteractorComponent::FindInteractableOn(AActor* Actor) const
@@ -668,4 +743,346 @@ double UInteract_InteractorComponent::GetServerTimeSeconds() const
 	// TimeSeconds is the world clock; on the authority it is the canonical "server time" used for
 	// hold/timeout math. Clients read it from their own world clock, which is close enough for UI.
 	return World->GetTimeSeconds();
+}
+
+//~ ADDITIVE: targeted / batch request API ----------------------------------------------------
+
+void UInteract_InteractorComponent::RequestInteractAt(FGameplayTag DesiredVerb, AActor* Target)
+{
+	if (!Target)
+	{
+		// No explicit target: behave like the focus-driven request.
+		RequestInteract(DesiredVerb);
+		return;
+	}
+
+	if (HasAuthority())
+	{
+		const EInteract_Result Result = ServerBeginInteractAtAuthoritative(DesiredVerb, Target);
+		ClientInteractResult(Result, DesiredVerb);
+		return;
+	}
+
+	// Carry the target as a net-safe durable handle so the server can re-resolve + re-validate it.
+	ServerInteractAt(DesiredVerb, FDP_CommandTargetHandle(Target));
+}
+
+void UInteract_InteractorComponent::RequestBatchInteract(FGameplayTag DesiredVerb)
+{
+	if (HasAuthority())
+	{
+		const int32 Count = ServerBatchInteractAuthoritative(DesiredVerb);
+		ClientInteractResult(Count > 0 ? EInteract_Result::Success : EInteract_Result::NoTarget, DesiredVerb);
+		return;
+	}
+
+	ServerBatchInteract(DesiredVerb);
+}
+
+void UInteract_InteractorComponent::GetFocusVerbMenu(FInteract_VerbMenu& Out) const
+{
+	Out = FInteract_VerbMenu();
+
+	UObject* Interactable = FocusInteractableObject.Get();
+	if (!Interactable)
+	{
+		return;
+	}
+
+	const FInteract_Query Query = BuildQueryFromOwnerView(FGameplayTag());
+	UInteract_AvailabilityHelper::BuildVerbMenu(Interactable, Query, Out);
+}
+
+void UInteract_InteractorComponent::GetLocalCandidateActors(TArray<AActor*>& OutActors) const
+{
+	OutActors.Reset(LocalCandidateActors.Num());
+	for (const TWeakObjectPtr<AActor>& Weak : LocalCandidateActors)
+	{
+		if (AActor* Actor = Weak.Get())
+		{
+			OutActors.Add(Actor);
+		}
+	}
+}
+
+void UInteract_InteractorComponent::SetLocalFocusOverride(AActor* OverrideActor)
+{
+	LocalFocusOverride = OverrideActor;
+	// Refresh focus immediately so the override takes effect this frame (don't wait for the throttle).
+	UpdateLocalFocus();
+}
+
+void UInteract_InteractorComponent::ClearLocalFocusOverride()
+{
+	if (LocalFocusOverride.IsValid())
+	{
+		LocalFocusOverride.Reset();
+		UpdateLocalFocus();
+	}
+}
+
+//~ ADDITIVE: server RPCs (targeted / batch) --------------------------------------------------
+
+bool UInteract_InteractorComponent::ServerInteractAt_Validate(FGameplayTag /*DesiredVerb*/, FDP_CommandTargetHandle Target)
+{
+	// Structurally accept; the server re-resolves the handle and re-validates reachability in
+	// _Implementation. An unset handle is acceptable (treated as a focus-driven request there).
+	return true;
+}
+
+void UInteract_InteractorComponent::ServerInteractAt_Implementation(FGameplayTag DesiredVerb, FDP_CommandTargetHandle Target)
+{
+	AActor* TargetActor = Cast<AActor>(Target.Resolve());
+	const EInteract_Result Result = ServerBeginInteractAtAuthoritative(DesiredVerb, TargetActor);
+	ClientInteractResult(Result, DesiredVerb);
+}
+
+bool UInteract_InteractorComponent::ServerBatchInteract_Validate(FGameplayTag /*DesiredVerb*/)
+{
+	return true;
+}
+
+void UInteract_InteractorComponent::ServerBatchInteract_Implementation(FGameplayTag DesiredVerb)
+{
+	const int32 Count = ServerBatchInteractAuthoritative(DesiredVerb);
+	ClientInteractResult(Count > 0 ? EInteract_Result::Success : EInteract_Result::NoTarget, DesiredVerb);
+}
+
+//~ ADDITIVE: server-side authoritative (targeted / batch) ------------------------------------
+
+EInteract_Result UInteract_InteractorComponent::ServerBeginInteractAtAuthoritative(FGameplayTag DesiredVerb, AActor* Target)
+{
+	if (!HasAuthority())
+	{
+		return EInteract_Result::NotAllowed;
+	}
+
+	AActor* Owner = GetOwner();
+	if (!Owner)
+	{
+		return EInteract_Result::NotAllowed;
+	}
+
+	// No client-named target ⇒ fall back to the focus-strategy re-derivation (the original path).
+	if (!Target)
+	{
+		return ServerBeginInteractAuthoritative(DesiredVerb);
+	}
+
+	// If already interacting, end the previous one first (a new request is treated as a switch).
+	if (ActiveVerb.IsValid())
+	{
+		ServerEndInteractAuthoritative(EInteract_EndReason::Interrupted);
+	}
+
+	// Re-derive the reachable candidate set from the server's own view of the pawn and confirm the
+	// CLIENT-NAMED target is genuinely among them. This is the authority gate: the client cannot name
+	// an actor it could not legitimately reach (cursor picks / focus cycling are only hints).
+	FInteract_Query Query = BuildQueryFromOwnerView(DesiredVerb);
+
+	TArray<FInteract_Candidate> Candidates;
+	DetectCandidates(Query, Candidates);
+
+	const FInteract_Candidate* Chosen = nullptr;
+	for (const FInteract_Candidate& C : Candidates)
+	{
+		if (C.IsValidCandidate() && C.Actor.Get() == Target)
+		{
+			Chosen = &C;
+			break;
+		}
+	}
+
+	if (!Chosen)
+	{
+		// The named target is not currently reachable from the server's view.
+		return EInteract_Result::NoTarget;
+	}
+
+	UObject* Interactable = Chosen->InteractableObject.Get();
+	AActor* TargetActor = Chosen->Actor.Get();
+	if (!Interactable || !TargetActor || !Interactable->Implements<UInteract_Interactable>())
+	{
+		return EInteract_Result::NoTarget;
+	}
+
+	if (!IInteract_Interactable::Execute_CanInteract(Interactable, Query))
+	{
+		return EInteract_Result::Rejected;
+	}
+
+	FGameplayTag EffectiveVerb;
+	if (!ResolveEffectiveVerb(Interactable, Query, EffectiveVerb))
+	{
+		return EInteract_Result::UnsupportedVerb;
+	}
+
+	// Availability seam gate (locks/wallet/cooldown). Denial is surfaced on the bus + to the client.
+	FGameplayTag ReasonTag;
+	if (!CheckVerbAvailability(Interactable, EffectiveVerb, ReasonTag))
+	{
+		BroadcastDenied(TargetActor, EffectiveVerb, ReasonTag);
+		return EInteract_Result::Rejected;
+	}
+
+	FInteract_Context Context;
+	Context.Instigator = Owner;
+	Context.Verb = EffectiveVerb;
+	Context.StartServerTimeSeconds = GetServerTimeSeconds();
+
+	if (!IInteract_Interactable::Execute_BeginInteract(Interactable, Context))
+	{
+		return EInteract_Result::Rejected;
+	}
+
+	SetActiveInteraction_Server(EffectiveVerb, Context.StartServerTimeSeconds, Interactable, TargetActor);
+	BroadcastBusEvent(InteractNativeTags::Bus_Interact_Begin, TargetActor, EffectiveVerb, EInteract_EndReason::Completed);
+
+	UE_LOG(LogDP, Verbose, TEXT("[Interact] %s began (targeted) '%s' on %s"),
+		*Owner->GetName(), *EffectiveVerb.ToString(), *TargetActor->GetName());
+
+	return EInteract_Result::Success;
+}
+
+int32 UInteract_InteractorComponent::ServerBatchInteractAuthoritative(FGameplayTag DesiredVerb)
+{
+	if (!HasAuthority())
+	{
+		return 0;
+	}
+
+	AActor* Owner = GetOwner();
+	if (!Owner)
+	{
+		return 0;
+	}
+
+	// Re-derive ALL eligible candidates from the server's own view.
+	FInteract_Query Query = BuildQueryFromOwnerView(DesiredVerb);
+
+	TArray<FInteract_Candidate> Candidates;
+	DetectCandidates(Query, Candidates);
+
+	const int32 Limit = FMath::Max(1, MaxBatchTargets);
+	int32 SuccessCount = 0;
+
+	for (const FInteract_Candidate& C : Candidates)
+	{
+		if (SuccessCount >= Limit)
+		{
+			break;
+		}
+		if (!C.IsValidCandidate())
+		{
+			continue;
+		}
+
+		UObject* Interactable = C.InteractableObject.Get();
+		AActor* TargetActor = C.Actor.Get();
+		if (!Interactable || !TargetActor || !Interactable->Implements<UInteract_Interactable>())
+		{
+			continue;
+		}
+
+		// Per-target verb resolution + eligibility + availability (a batch never bypasses gates).
+		FInteract_Query TargetQuery = Query;
+		FGameplayTag EffectiveVerb;
+		if (!ResolveEffectiveVerb(Interactable, TargetQuery, EffectiveVerb))
+		{
+			continue;
+		}
+		if (!IInteract_Interactable::Execute_CanInteract(Interactable, TargetQuery))
+		{
+			continue;
+		}
+
+		FGameplayTag ReasonTag;
+		if (!CheckVerbAvailability(Interactable, EffectiveVerb, ReasonTag))
+		{
+			BroadcastDenied(TargetActor, EffectiveVerb, ReasonTag);
+			continue;
+		}
+
+		FInteract_Context Context;
+		Context.Instigator = Owner;
+		Context.Verb = EffectiveVerb;
+		Context.StartServerTimeSeconds = GetServerTimeSeconds();
+
+		if (!IInteract_Interactable::Execute_BeginInteract(Interactable, Context))
+		{
+			continue;
+		}
+
+		// Batch interactions are atomic per-target: begin then immediately complete. Holds are not
+		// meaningful in a batch (there is no per-target hold input), so each accepted target is run to
+		// Completed right away. Interactables that need duration should not advertise themselves for
+		// batch verbs.
+		BroadcastBusEvent(InteractNativeTags::Bus_Interact_Begin, TargetActor, EffectiveVerb, EInteract_EndReason::Completed);
+		IInteract_Interactable::Execute_EndInteract(Interactable, Context, EInteract_EndReason::Completed);
+		BroadcastBusEvent(InteractNativeTags::Bus_Interact_Complete, TargetActor, EffectiveVerb, EInteract_EndReason::Completed);
+
+		++SuccessCount;
+	}
+
+	BroadcastBatchComplete(DesiredVerb, SuccessCount);
+
+	UE_LOG(LogDP, Verbose, TEXT("[Interact] %s batch '%s' completed %d/%d targets"),
+		*Owner->GetName(), *DesiredVerb.ToString(), SuccessCount, Candidates.Num());
+
+	return SuccessCount;
+}
+
+//~ ADDITIVE: availability + extra bus broadcasts ---------------------------------------------
+
+bool UInteract_InteractorComponent::CheckVerbAvailability(UObject* Interactable, FGameplayTag Verb, FGameplayTag& OutReasonTag) const
+{
+	OutReasonTag = FGameplayTag();
+
+	if (!Interactable || !Interactable->Implements<USeam_InteractAvailability>())
+	{
+		// Seam absent ⇒ available. The interactor never knows which gameplay system would gate it.
+		return true;
+	}
+
+	const TScriptInterface<ISeam_EntityIdentity> Instigator =
+		UInteract_AvailabilityHelper::ResolveInstigatorIdentity(GetOwner());
+
+	return ISeam_InteractAvailability::Execute_IsVerbAvailable(Interactable, Verb, Instigator, OutReasonTag);
+}
+
+void UInteract_InteractorComponent::BroadcastDenied(AActor* Target, FGameplayTag Verb, FGameplayTag ReasonTag) const
+{
+	UDP_MessageBusSubsystem* Bus = FDP_SubsystemStatics::GetGameInstanceSubsystem<UDP_MessageBusSubsystem>(this);
+	if (!Bus)
+	{
+		return;
+	}
+
+	FInteract_DenialPayload Payload;
+	Payload.Instigator = GetOwner();
+	Payload.Target = Target;
+	Payload.Verb = Verb;
+	Payload.ReasonTag = ReasonTag;
+	Payload.ServerTimeSeconds = GetServerTimeSeconds();
+
+	FInstancedStruct Wrapped = FInstancedStruct::Make(Payload);
+	Bus->BroadcastPayload(InteractNativeTags::Bus_Interact_Denied, Wrapped, GetOwner());
+}
+
+void UInteract_InteractorComponent::BroadcastBatchComplete(FGameplayTag Verb, int32 SuccessCount) const
+{
+	UDP_MessageBusSubsystem* Bus = FDP_SubsystemStatics::GetGameInstanceSubsystem<UDP_MessageBusSubsystem>(this);
+	if (!Bus)
+	{
+		return;
+	}
+
+	FInteract_BatchPayload Payload;
+	Payload.Instigator = GetOwner();
+	Payload.Verb = Verb;
+	Payload.SuccessCount = SuccessCount;
+	Payload.ServerTimeSeconds = GetServerTimeSeconds();
+
+	FInstancedStruct Wrapped = FInstancedStruct::Make(Payload);
+	Bus->BroadcastPayload(InteractNativeTags::Bus_Interact_BatchComplete, Wrapped, GetOwner());
 }

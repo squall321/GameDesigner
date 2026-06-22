@@ -2,8 +2,11 @@
 
 #include "Loading/Flow_LoadingScreenSubsystem.h"
 #include "Loading/Flow_LoadingViewModel.h"
+#include "Loading/Streaming/Flow_StreamingLoadCoordinator.h"
 #include "Settings/Flow_DeveloperSettings.h"
 #include "Flow/Flow_FlowTypes.h"
+#include "Flow/Flow_GameFlowSubsystem.h"
+#include "Flow/Flow_FlowStateDefinition.h"
 #include "DesignPatternsGameFlowModule.h"
 
 #include "Core/DPLog.h"
@@ -28,6 +31,10 @@ void UFlow_LoadingScreenSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 	// Create the loading ViewModel (owning ref keeps it GC-alive while this subsystem lives).
 	ViewModel = NewObject<UFlow_LoadingViewModel>(this);
 
+	// Create the owned streaming-load coordinator (aggregates sublevel streaming into the bar). Additive.
+	StreamingCoordinator = NewObject<UFlow_StreamingLoadCoordinator>(this);
+	StreamingCoordinator->Initialize(this);
+
 	// Wrap the engine's map-change delegates so we cover EVERY travel, even ones we didn't start.
 	PreLoadMapHandle  = FCoreUObjectDelegates::PreLoadMap.AddUObject(this, &UFlow_LoadingScreenSubsystem::HandlePreLoadMap);
 	PostLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &UFlow_LoadingScreenSubsystem::HandlePostLoadMap);
@@ -38,6 +45,12 @@ void UFlow_LoadingScreenSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 void UFlow_LoadingScreenSubsystem::Deinitialize()
 {
 	CancelPreload();
+
+	if (StreamingCoordinator)
+	{
+		StreamingCoordinator->Shutdown();
+		StreamingCoordinator = nullptr;
+	}
 
 	if (PreLoadMapHandle.IsValid())
 	{
@@ -105,6 +118,22 @@ void UFlow_LoadingScreenSubsystem::CancelPreload()
 	}
 }
 
+void UFlow_LoadingScreenSubsystem::BeginStreamingLoad(const FGameplayTagContainer& Categories, FText Label)
+{
+	if (StreamingCoordinator)
+	{
+		StreamingCoordinator->BeginSublevelLoad(Categories, Label);
+	}
+}
+
+void UFlow_LoadingScreenSubsystem::EndStreamingLoad()
+{
+	if (StreamingCoordinator)
+	{
+		StreamingCoordinator->EndSublevelLoad();
+	}
+}
+
 bool UFlow_LoadingScreenSubsystem::TickPreload(float /*DeltaTime*/)
 {
 	if (!PreloadHandle.IsValid())
@@ -145,13 +174,40 @@ void UFlow_LoadingScreenSubsystem::HandlePreLoadMap(const FString& MapName)
 
 void UFlow_LoadingScreenSubsystem::HandlePostLoadMap(UWorld* /*LoadedWorld*/)
 {
-	// The map is in; finish and hide. The engine auto-hides the movie loading screen, so we only update
-	// our model + UI here.
-	UpdateProgress(EFlow_LoadingState::Finishing, 1.f, CurrentLabel);
-	UpdateProgress(EFlow_LoadingState::Idle, -1.f, FText::GetEmpty());
+	// The map is in. If the now-active flow phase declares streaming content, hand off to the streaming
+	// coordinator (which keeps the loading bar up while sublevels stream in) BEFORE we'd otherwise hide.
+	// The coordinator re-resolves the streaming adapter per load and is inert when none is present.
+	bool bStreamingStarted = false;
+	if (StreamingCoordinator)
+	{
+		if (const UFlow_GameFlowSubsystem* Flow = FDP_SubsystemStatics::GetGameInstanceSubsystem<UFlow_GameFlowSubsystem>(this))
+		{
+			const FGameplayTag Phase = Flow->GetCurrentPhase();
+			if (const UFlow_FlowStateDefinition* Def = Flow->ResolvePhaseDefinitionForLoading(Phase))
+			{
+				if (!Def->StreamingCategories.IsEmpty())
+				{
+					const FText Label = CurrentLabel.IsEmpty()
+						? NSLOCTEXT("DesignPatternsGameFlow", "StreamingLevel", "Streaming Level")
+						: CurrentLabel;
+					StreamingCoordinator->BeginSublevelLoad(Def->StreamingCategories, Label);
+					bStreamingStarted = true;
+				}
+			}
+		}
+	}
 
-	CurrentMapName.Reset();
-	UE_LOG(LogDP, Log, TEXT("[Loading] PostLoadMap; loading screen hidden."));
+	// Finish and hide. The engine auto-hides the movie loading screen; we update our model + UI here. When
+	// streaming has begun we keep the bar VISIBLE (the coordinator drives it to completion, then hides it).
+	UpdateProgress(EFlow_LoadingState::Finishing, 1.f, CurrentLabel);
+	if (!bStreamingStarted)
+	{
+		UpdateProgress(EFlow_LoadingState::Idle, -1.f, FText::GetEmpty());
+		CurrentMapName.Reset();
+	}
+
+	UE_LOG(LogDP, Log, TEXT("[Loading] PostLoadMap; %s."),
+		bStreamingStarted ? TEXT("streaming sublevels (bar held)") : TEXT("loading screen hidden"));
 }
 
 void UFlow_LoadingScreenSubsystem::SetupEngineLoadingScreen(const FText& Label)

@@ -10,6 +10,7 @@
 class UCam_CameraMode;
 class UCurveFloat;
 class UCam_CameraShakeLibrary;
+class UCam_PostProcessProfile;
 
 /**
  * Maps a camera-mode identity tag to the mode class instanced when that tag is pushed. Authored in
@@ -118,4 +119,20 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Targeting", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float DefaultCandidateOverlapRadius = 2000.f;
+
+	// ---- Additive deepening: post-process / photo mode (mechanism wiring only) ----
+
+	/**
+	 * Default post-process profile a director uses when it has no explicit PostProcessProfileOverride.
+	 * Soft so the setting does not force-load the profile into every cook that includes this module.
+	 */
+	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "PostProcess")
+	TSoftObjectPtr<UCam_PostProcessProfile> DefaultPostProcessProfile;
+
+	/**
+	 * Priority a photo-mode component pushes its free-fly camera mode at when it leaves its own
+	 * PhotoModePriority at the <= 0 sentinel. High so photo mode wins over gameplay modes.
+	 */
+	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Photo", meta = (ClampMin = "0"))
+	int32 DefaultPhotoModePriority = 1000;
 };

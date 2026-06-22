@@ -9,6 +9,7 @@
 
 class UAudio_SoundBankDataAsset;
 class UAudio_MixProfileDataAsset;
+class UAudio_VOBankDataAsset;
 
 /**
  * Project-wide configuration for the DesignPatternsAudio module. Appears under
@@ -92,6 +93,20 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, Config, Category = "Mix", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
 	float DefaultDuckVolume = 0.4f;
+
+	/**
+	 * ADDITIVE: VO/bark banks the VO subsystem loads at GameInstance start. Soft so unreferenced
+	 * lines never load. A project may also push banks at runtime via UAudio_VOSubsystem::AddVOBank.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "VO")
+	TArray<TSoftObjectPtr<UAudio_VOBankDataAsset>> DefaultVOBanks;
+
+	/**
+	 * ADDITIVE: defensive fallback VO line duration (seconds) used to time queue advancement only when
+	 * a line's resolved sound reports a non-positive/looping duration. Pure mechanism tunable.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "VO", meta = (ClampMin = "0.1", UIMax = "30.0", Units = "s"))
+	float FallbackVODurationSeconds = 3.f;
 
 	/** Convenience accessor (never null in a running game; the CDO is populated from the project ini). */
 	static const UAudio_DeveloperSettings* Get();

@@ -57,4 +57,15 @@ namespace SaveXNativeTags
 
 	/** Root for all SaveSystem-owned persistence record kinds (ISeam_Persistable::GetPersistenceKind). */
 	DESIGNPATTERNSSAVESYSTEM_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Kind);
+
+	/** Root for the PROFILE partition record kinds (cross-save shared data). Children belong to the profile. */
+	DESIGNPATTERNSSAVESYSTEM_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Kind_Profile);
+
+	// --- Storage-layer bus channels (children of the core DP.Bus root) ---
+
+	/** Bus channel: broadcast when a wrapped container is recovered from a backup during load. */
+	DESIGNPATTERNSSAVESYSTEM_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_StorageRecovered);
+
+	/** Bus channel: broadcast when a cloud-vs-local conflict is detected on load. */
+	DESIGNPATTERNSSAVESYSTEM_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_CloudConflict);
 }

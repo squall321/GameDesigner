@@ -3,6 +3,7 @@
 #include "DesignPatternsSaveSystemModule.h"
 #include "Modules/ModuleManager.h"
 #include "Core/DPLog.h"
+#include "Storage/SaveX_ContainerHeader.h" // FSaveX_ContainerVersion::Register
 
 namespace SaveXNativeTags
 {
@@ -20,6 +21,15 @@ namespace SaveXNativeTags
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Persist_Kind, "SaveX.Persist.Kind",
 		"Root for SaveSystem-owned ISeam_Persistable record kinds.");
+
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Persist_Kind_Profile, "SaveX.Persist.Kind.Profile",
+		"Root for PROFILE-partition record kinds (cross-save shared data); children are gathered into the profile save.");
+
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Bus_StorageRecovered, "DP.Bus.Save.StorageRecovered",
+		"Broadcast when a wrapped container is recovered from a backup during load; payload carries the slot name.");
+
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Bus_CloudConflict, "DP.Bus.Save.CloudConflict",
+		"Broadcast when a cloud-vs-local conflict is detected on load; payload carries the slot name.");
 }
 
 /**
@@ -30,6 +40,10 @@ namespace SaveXNativeTags
  */
 void FDesignPatternsSaveSystemModule::StartupModule()
 {
+	// Register the wrapper-container custom version (distinct from the core FDP_SaveVersion stream). This is
+	// the envelope version only; the inner core blob keeps its own version. Safe to call once at startup.
+	FSaveX_ContainerVersion::Register();
+
 	UE_LOG(LogDP, Log, TEXT("DesignPatternsSaveSystem module started."));
 }
 
