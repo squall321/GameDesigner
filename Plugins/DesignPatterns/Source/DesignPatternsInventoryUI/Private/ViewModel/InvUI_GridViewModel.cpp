@@ -4,6 +4,7 @@
 #include "ViewModel/InvUI_SlotViewModel.h"
 #include "Adapter/InvUI_ContainerAdapterObject.h"
 #include "Core/DPLog.h"
+#include "Async/Async.h"
 
 namespace UE::FieldNotification
 {
@@ -443,7 +444,17 @@ void UInvUI_GridViewModel::StreamIconForSlot(UInvUI_SlotViewModel* SlotVM, const
 			UTexture2D* Texture = Cast<UTexture2D>(IconPath.ResolveObject());
 			if (Texture != nullptr)
 			{
-				Slot->ApplyDisplayInfo(Name, Desc, Texture, Quality);
+				// RequestAsyncLoad's completion delegate may fire on a loader thread; ApplyDisplayInfo
+				// mutates UPROPERTYs and broadcasts field-changed, which is game-thread-only. Marshal it
+				// (capturing the slot weakly by value, never raw this). Mirrors SaveX_StorageSubsystem.
+				AsyncTask(ENamedThreads::GameThread, [WeakSlot, CapturedTag, Name, Desc, Texture, Quality]()
+				{
+					UInvUI_SlotViewModel* GameThreadSlot = WeakSlot.Get();
+					if (GameThreadSlot != nullptr && GameThreadSlot->GetItemTag() == CapturedTag)
+					{
+						GameThreadSlot->ApplyDisplayInfo(Name, Desc, Texture, Quality);
+					}
+				});
 			}
 		}));
 

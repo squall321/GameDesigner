@@ -48,6 +48,26 @@ public:
 	bool bWalkable = true;
 
 	/**
+	 * Per-cell movement cost a grid pathfinder pays to ENTER a cell of this tile type (mud/road/etc.).
+	 * Higher means slower/more-costly to cross. A value <= 0 means "use the path settings' default
+	 * traversal cost"; walkability is decided by bWalkable, not by this value, so a value of 0 does NOT
+	 * make a cell impassable. ADDITIVE field — existing assets default to 0 and behave exactly as before
+	 * (pathing uses the default cost for every walkable cell).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SimGrid|Tile", meta = (ClampMin = "0.0"))
+	float TraversalCost = 0.f;
+
+	/**
+	 * Auto-tiling bucket for adjacency/bitmask resolution: two cells are considered "connected" for the
+	 * marching-squares / bitmask auto-tiler when their tile types share this category (e.g. all road
+	 * variants share SimGrid.AutoTile.Road so they bevel/join into each other). Empty (default) means the
+	 * cell only connects to its own exact tile-type tag. ADDITIVE — existing assets default to empty and
+	 * keep their prior behaviour.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SimGrid|Tile")
+	FGameplayTag AutoTileCategory;
+
+	/**
 	 * Per-cell payload template. When a cell of this type is placed without an explicit payload, the
 	 * carrier seeds the cell's FInstancedStruct from a copy of this template (e.g. a struct holding
 	 * fertility, durability, resource amount). May be empty for tiles with no per-cell state.

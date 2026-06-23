@@ -63,6 +63,26 @@ enum class EMod_MountOrderPolicy : uint8
 };
 
 /**
+ * How data-tag override conflicts between packs are resolved when no ISeam_ModResolutionPolicy is
+ * registered. The default keeps the registry's shipped precedence (highest LoadPriority / latest mount).
+ */
+UENUM(BlueprintType)
+enum class EMod_ConflictPolicy : uint8
+{
+	/** DEFAULT. Keep the registry's shipped precedence: highest LoadPriority wins, ties to latest mount. */
+	LoadOrderPrecedence,
+
+	/**
+	 * Refuse to mount a pack that would override a data tag already provided by an earlier pack (the
+	 * first pack to claim a tag keeps it). The diagnostics resolver surfaces these as conflicts.
+	 */
+	FirstWins,
+
+	/** Defer entirely to a registered ISeam_ModResolutionPolicy; if none is registered, falls back to LoadOrderPrecedence. */
+	PolicySeam
+};
+
+/**
  * Project-wide configuration for the DesignPatternsModContent module. Appears under
  * Project Settings -> Plugins -> Design Patterns Mod Content. Editing here requires no code.
  *
@@ -168,6 +188,66 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, Config, Category = "Compatibility")
 	FMod_SemVer HostEngineVersionOverride;
+
+	// ---- Trust / signing (additive deepening) ----
+
+	/**
+	 * When true a pack must pass the signature-verifier seam (ISeam_ModSignatureVerifier) with a verdict
+	 * that AllowsMount before the manifest path lets it mount. With no verifier registered the inert
+	 * default returns HashOk (integrity-only), which still allows the mount — so enabling this without a
+	 * verifier degrades to hash integrity, never an unconditional block. DEFAULT off (no signing required).
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Trust")
+	bool bRequireSignedPacks = false;
+
+	/**
+	 * Signer ids (children of a project DP.Mod.Signer.* namespace) the host trusts. Advisory metadata for
+	 * the host's verifier seam; the genre-neutral module does no crypto itself. A listed ancestor covers
+	 * its subtree.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Trust")
+	FGameplayTagContainer TrustedSignerIds;
+
+	// ---- Editor hot-reload (additive deepening) ----
+
+	/**
+	 * When true (and only in an editor/dev build) the hot-reload subsystem watches the discovery
+	 * directories and re-discovers / re-mounts packs on disk change. Never auto-executes code; re-mounts
+	 * still go through validate-before-activate. DEFAULT off.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "HotReload")
+	bool bEnableEditorHotReload = false;
+
+	/**
+	 * Debounce window (seconds) coalescing a burst of file-change notifications into one re-discover so a
+	 * multi-file save does not re-scan repeatedly. Defensive fallback applied at the call site if zero.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "HotReload", meta = (ClampMin = "0.0"))
+	float HotReloadDebounceSeconds = 0.5f;
+
+	// ---- Catalog / workshop bridge (additive deepening) ----
+
+	/**
+	 * Folder the default local-folder catalog source treats as its "store". Items here can be "downloaded"
+	 * (sandbox-constrained copy) into a discovery directory. MUST resolve under a configured sandbox root
+	 * just like any other content path; an empty/escaping value disables the default catalog source.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Catalog", meta = (RelativeToGameDir))
+	FDirectoryPath LocalCatalogFolder;
+
+	/**
+	 * The discovery directory index (into DiscoveryDirectories) the default catalog source copies a
+	 * downloaded item INTO. Clamped to a valid index at the call site; when DiscoveryDirectories is empty
+	 * the catalog source is inert. This keeps every download destination inside the sandbox.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Catalog", meta = (ClampMin = "0"))
+	int32 CatalogDownloadDirectoryIndex = 0;
+
+	// ---- Conflict resolution (additive deepening) ----
+
+	/** How data-tag override conflicts between packs are resolved. DEFAULT keeps the registry precedence. */
+	UPROPERTY(EditAnywhere, Config, Category = "Mounting")
+	EMod_ConflictPolicy ConflictResolutionPolicy = EMod_ConflictPolicy::LoadOrderPrecedence;
 
 	// ---- Diagnostics ----
 

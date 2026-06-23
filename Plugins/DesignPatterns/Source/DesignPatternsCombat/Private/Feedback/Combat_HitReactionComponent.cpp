@@ -59,6 +59,13 @@ void UCombat_HitReactionComponent::EndPlay(const EEndPlayReason::Type EndPlayRea
 	}
 
 	UnsubscribeBus();
+
+	// Cancel any pending hitstop restore so the timer manager never calls back into a dead component.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HitstopTimerHandle);
+	}
+
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -167,8 +174,7 @@ void UCombat_HitReactionComponent::ApplyHitstop(bool bSalient)
 
 	const float Duration = HitstopSeconds * (bSalient ? FMath::Max(1.f, SalientHitstopMultiplier) : 1.f);
 
-	FTimerHandle Handle;
-	World->GetTimerManager().SetTimer(Handle, this, &UCombat_HitReactionComponent::RestoreTimeDilation, Duration, false);
+	World->GetTimerManager().SetTimer(HitstopTimerHandle, this, &UCombat_HitReactionComponent::RestoreTimeDilation, Duration, false);
 }
 
 void UCombat_HitReactionComponent::RestoreTimeDilation()

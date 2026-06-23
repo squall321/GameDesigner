@@ -30,6 +30,12 @@ namespace InvUITags
 	/** Service-locator key for the active IInvUI_ItemDisplay icon/text resolver. */
 	DESIGNPATTERNSINVENTORYUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_ItemDisplay);
 
+	/**
+	 * Service-locator key for the active ISeam_ItemStats resolver (item tag -> FSeam_StatMod set),
+	 * consumed by the comparison tooltip to diff a hovered item against an equipped one.
+	 */
+	DESIGNPATTERNSINVENTORYUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_ItemStats);
+
 	// --- Player -> server intent verbs (routed through the player-owned intent component) ---
 	// The window UI never mutates a container directly; it emits one of these intents and the
 	// server re-derives the real target/slot from identity. Anchored under DP.InvUI.Intent.
@@ -54,6 +60,16 @@ namespace InvUITags
 
 	/** Intent: sort the whole container using the active sort strategy. */
 	DESIGNPATTERNSINVENTORYUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Intent_Sort);
+
+	/**
+	 * Intent: place a stack at an EXPLICIT cell (spatial/Tetris containers), optionally rotated.
+	 * Emitted by the player-owned UInvUI_SpatialIntentComponent; the authority re-derives the target
+	 * from identity and applies the placement under its own authority. Parallel to Intent_Move.
+	 */
+	DESIGNPATTERNSINVENTORYUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Intent_Place);
+
+	/** Intent: rotate the item in a slot in place (spatial containers). */
+	DESIGNPATTERNSINVENTORYUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Intent_Rotate);
 
 	// --- Container capability advertisements (queried by the UI to enable affordances) ---
 	// A backend/container exposes these so the window can show/hide drag, split, sort, etc.

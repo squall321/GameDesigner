@@ -106,4 +106,53 @@ public:
 	/** Maximum subtitle lines shown on screen simultaneously; lower-priority lines wait in the queue. */
 	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Subtitles", meta = (ClampMin = "1"))
 	int32 MaxSubtitlesOnScreen = 2;
+
+	// --- Rich subtitles / backlog (consumed by ULoc_RichSubtitleSubsystem) ---
+
+	/**
+	 * Maximum entries retained in the subtitle history / backlog ring. Oldest entries are dropped past this.
+	 * Clamped >=1 by the subsystem's defensive fallback.
+	 */
+	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Subtitles|Rich", meta = (ClampMin = "1"))
+	int32 SubtitleHistoryCap = 64;
+
+	/**
+	 * DataTag of the ULoc_SpeakerStyleDataAsset the rich subtitle subsystem resolves speaker styles from.
+	 * Empty leaves no styles loaded (lines surface with the default style). Resolved via the data registry.
+	 */
+	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Subtitles|Rich")
+	FGameplayTag SpeakerStyleDataTag;
+
+	// --- Accessibility focus router (consumed by ULoc_AccessibilityFocusRouter) ---
+
+	/**
+	 * Minimum seconds between two TTS-routed focus utterances. Rapid focus changes within this window
+	 * coalesce to the latest, so a screen reader is not spammed. Clamped >=0.
+	 */
+	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Accessibility", meta = (ClampMin = "0.0", ForceUnits = "s"))
+	float FocusSpeakDebounceSeconds = 0.25f;
+
+	/**
+	 * DataTag of the ULoc_ColorblindLUTDataAsset used by ULoc_ContrastLibrary::ApplyColorblindLUT. Empty =
+	 * identity (the inline ApplyColorblindToColor remains the canonical path).
+	 */
+	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Accessibility")
+	FGameplayTag ColorblindLUTDataTag;
+
+	// --- Localization QA (consumed by ULoc_LocalizationQASubsystem; non-shipping) ---
+
+	/**
+	 * When true (non-shipping builds only), the QA subsystem pseudo-localizes resolved text (accent /
+	 * bracket / length-expand) so layout + un-localized strings are obvious. Player-local, persisted here.
+	 * Has no effect in shipping builds.
+	 */
+	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "QA")
+	bool bPseudoLocalizationEnabled = false;
+
+	/**
+	 * Length-expansion factor pseudo-localization pads strings by (1.0 = no padding, 1.3 = +30%). Models how
+	 * much longer real translations tend to be, exposing tight layouts. Clamped >=1.
+	 */
+	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "QA", meta = (ClampMin = "1.0"))
+	float PseudoLocExpansion = 1.3f;
 };

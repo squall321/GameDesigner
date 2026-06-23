@@ -106,6 +106,86 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category = "Crowd", meta = (ClampMin = "1.0", ClampMax = "1000.0", UIMin = "10.0", UIMax = "300.0"))
 	float ArrivalRadius = 60.f;
 
+	// --- Memory (decaying knowledge) ------------------------------------------------------------
+
+	/**
+	 * Half-life, in SIM DAYS, of a remembered fact's confidence: after this many in-sim days an
+	 * unrefreshed memory has decayed to half its original confidence. Expressed in days (not seconds)
+	 * because memory ages on the simulation clock's FractionalDays, so a fast/slow day cycle scales it
+	 * automatically.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Memory", meta = (ClampMin = "0.01", UIMin = "0.1", UIMax = "30.0"))
+	float MemoryHalfLifeDays = 1.f;
+
+	/**
+	 * Confidence below which a memory fact is pruned (forgotten). Keeps the replicated memory array
+	 * bounded so stale, near-zero-confidence facts don't accumulate.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Memory", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MemoryPruneConfidence = 0.05f;
+
+	/**
+	 * Real-world seconds between authoritative memory replication flushes. Memory ages every server
+	 * frame but only the throttled snapshot crosses the wire, bounding bandwidth for a crowd.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Memory", meta = (ClampMin = "0.05", ClampMax = "10.0", UIMin = "0.1", UIMax = "5.0"))
+	float MemoryReplicationCadence = 1.f;
+
+	// --- Mood (emotion model) -------------------------------------------------------------------
+
+	/**
+	 * Real-world seconds between authoritative mood replication flushes. Mood decays toward baseline
+	 * every server frame; only the throttled snapshot replicates.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Mood", meta = (ClampMin = "0.05", ClampMax = "10.0", UIMin = "0.1", UIMax = "5.0"))
+	float MoodReplicationCadence = 0.5f;
+
+	// --- Reservations ---------------------------------------------------------------------------
+
+	/**
+	 * How long, in SIM DAYS, a reservation stays valid before it auto-expires (so an agent that died /
+	 * got stuck never permanently locks a resource). On the simulation clock's FractionalDays.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Jobs", meta = (ClampMin = "0.001", UIMin = "0.01", UIMax = "5.0"))
+	float ReservationExpiryDays = 0.25f;
+
+	// --- Pathfinding ----------------------------------------------------------------------------
+
+	/**
+	 * Maximum number of distinct cached async paths the path-cache subsystem keeps before evicting the
+	 * least-recently-used. Bounds memory for a large crowd reusing common routes.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Crowd", meta = (ClampMin = "1", ClampMax = "8192", UIMin = "16", UIMax = "1024"))
+	int32 PathCacheBudget = 256;
+
+	/**
+	 * Cell size (world units) the path cache quantizes start/goal to when coalescing duplicate crowd
+	 * requests, so many agents heading to nearly the same place share one path query. Larger = more
+	 * sharing (coarser), smaller = more precise (less sharing).
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Crowd", meta = (ClampMin = "1.0", ClampMax = "10000.0", UIMin = "50.0", UIMax = "1000.0"))
+	float PathQuantizeCellSize = 200.f;
+
+	// --- Formations & queues --------------------------------------------------------------------
+
+	/** Default spacing (world units) between formation slots when a formation asset does not override it. */
+	UPROPERTY(EditAnywhere, Config, Category = "Crowd", meta = (ClampMin = "1.0", ClampMax = "5000.0", UIMin = "50.0", UIMax = "500.0"))
+	float FormationSpacing = 150.f;
+
+	/** Spacing (world units) between successive agents standing in a queue volume. */
+	UPROPERTY(EditAnywhere, Config, Category = "Crowd", meta = (ClampMin = "1.0", ClampMax = "5000.0", UIMin = "50.0", UIMax = "500.0"))
+	float QueueSlotSpacing = 100.f;
+
+	// --- Routine --------------------------------------------------------------------------------
+
+	/**
+	 * Estimated agent travel speed (world units / second) the routine planner uses to convert a step's
+	 * travel distance into a lead-time, so an agent leaves early enough to ARRIVE on the hour. A planner
+	 * estimate, not a movement cap (locomotion still owns real speed).
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "Routine", meta = (ClampMin = "1.0", ClampMax = "100000.0", UIMin = "100.0", UIMax = "1000.0"))
+	float RoutineTravelSpeedEstimate = 300.f;
+
 	/** Convenience accessor (never null in a running game; the CDO is used for config). */
 	static const USimAg_DeveloperSettings* Get();
 };

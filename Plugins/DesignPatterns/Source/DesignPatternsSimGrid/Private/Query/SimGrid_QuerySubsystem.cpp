@@ -1,7 +1,7 @@
 // Copyright DesignPatterns plugin. All Rights Reserved.
 
 #include "Query/SimGrid_QuerySubsystem.h"
-#include "SimGrid_DeveloperSettings.h"
+#include "Settings/SimGrid_DeveloperSettings.h"
 #include "Core/DPLog.h"
 #include "Grid/Seam_TileProviderRead.h"
 #include "Containers/Queue.h"

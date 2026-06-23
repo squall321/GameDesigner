@@ -162,6 +162,13 @@ void UAnalytics_Subsystem::RecordEvent(FGameplayTag EventTag, const TArray<FSeam
 	Buffered.Attributes = Attributes; // value copy; attributes are PII-safe FSeam_NetValue
 	Buffered.TimestampSeconds = FApp::GetCurrentTime();
 
+	// Additive in-process observer hook (game thread). Fired AFTER the consent gate so observers
+	// (funnel/heatmap/breadcrumb/dashboard) never see telemetry recorded without consent. The
+	// payload mirrors the just-buffered event; broadcast by const ref to the original arguments to
+	// avoid an extra copy. EnforceBufferCap below may drop OLDER events, but the event we just
+	// broadcast is the newest and is unaffected.
+	OnEventRecorded.Broadcast(EventTag, Attributes);
+
 	EnforceBufferCap();
 
 	const UAnalytics_DeveloperSettings* Settings = UAnalytics_DeveloperSettings::Get();

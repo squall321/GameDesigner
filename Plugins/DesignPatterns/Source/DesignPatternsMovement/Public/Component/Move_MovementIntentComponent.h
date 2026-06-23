@@ -122,6 +122,19 @@ private:
 	bool HasValidNetOwnership() const;
 
 	/**
+	 * Re-derive the full server-authoritative pre-conditions for a special-move request (stamina for
+	 * dash/dodge, action cooldown, and the traversal trace for mantle/vault). Called on BOTH the
+	 * listen-server/standalone host path and the remote-client RPC path so neither role can admit a move
+	 * the other could not. May remap RequestTag (mantle<->vault) to the server's traced verdict.
+	 *
+	 * Has authoritative side effects (consumes the action cooldown, writes the traversal blackboard
+	 * target), so it must be called EXACTLY ONCE per admission, immediately before
+	 * ApplyAuthoritativeSpecialMove. Runs on the server only.
+	 * @return true if the move is admitted; false if any pre-condition rejects it.
+	 */
+	bool ValidateSpecialMovePreConditions(FGameplayTag& RequestTag);
+
+	/**
 	 * Authoritative admission for a validated request. Maps the request tag to a target state, performs
 	 * the move-specific server-side derivation (trace for mantle/vault), stamps the confirmed token, and
 	 * calls ChangeState. Runs on the server only.

@@ -3,6 +3,7 @@
 #include "Save/SimGrid_SaveGame.h"
 #include "World/SimGrid_WorldSubsystem.h"
 #include "Replication/SimGrid_ChunkReplicator.h"
+#include "Zone/SimGrid_ZoneCarrier.h"
 #include "Core/DPLog.h"
 
 bool USimGrid_SaveGame::CaptureFrom(USimGrid_WorldSubsystem* Grid)
@@ -23,6 +24,7 @@ bool USimGrid_SaveGame::CaptureFrom(USimGrid_WorldSubsystem* Grid)
 	ChunkSize = Grid->GetChunkSize();
 	Cells.Reset();
 	Ownership.Reset();
+	Zones.Reset();
 
 	TArray<ASimGrid_ChunkReplicator*> Carriers;
 	Grid->GetAllChunkCarriers(Carriers);
@@ -42,8 +44,17 @@ bool USimGrid_SaveGame::CaptureFrom(USimGrid_WorldSubsystem* Grid)
 		}
 	}
 
-	UE_LOG(LogDP, Log, TEXT("SimGrid save captured %d cells, %d ownership claims."),
-		Cells.Num(), Ownership.Num());
+	// Additively capture painted zones from the authority zone carrier (if one exists in the world).
+	if (ASimGrid_ZoneCarrier* ZoneCarrier = ASimGrid_ZoneCarrier::Resolve(Grid))
+	{
+		for (const FSimGrid_ZoneEntry& ZEntry : ZoneCarrier->GetZoneEntries())
+		{
+			Zones.Emplace(ZEntry.Cell, ZEntry.ZoneTypeTag, ZEntry.OwnerId, ZEntry.GrowthLevel);
+		}
+	}
+
+	UE_LOG(LogDP, Log, TEXT("SimGrid save captured %d cells, %d ownership claims, %d zones."),
+		Cells.Num(), Ownership.Num(), Zones.Num());
 	return true;
 }
 
@@ -85,8 +96,29 @@ int32 USimGrid_SaveGame::RestoreInto(USimGrid_WorldSubsystem* Grid) const
 		Grid->ClaimCells(Pair.Value, Pair.Key);
 	}
 
-	UE_LOG(LogDP, Log, TEXT("SimGrid save restored %d/%d cells, %d ownership groups."),
-		Applied, Cells.Num(), ByOwner.Num());
+	// Additively restore painted zones through the authority zone carrier (if one exists).
+	int32 ZonesApplied = 0;
+	if (Zones.Num() > 0)
+	{
+		if (ASimGrid_ZoneCarrier* ZoneCarrier = ASimGrid_ZoneCarrier::Resolve(Grid))
+		{
+			for (const FSimGrid_SavedZone& SavedZone : Zones)
+			{
+				if (ZoneCarrier->PaintZone(SavedZone.Cell, SavedZone.ZoneTypeTag, SavedZone.OwnerId))
+				{
+					ZoneCarrier->SetZoneGrowth(SavedZone.Cell, SavedZone.GrowthLevel);
+					++ZonesApplied;
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogDP, Warning, TEXT("SimGrid save RestoreInto: %d zones could not be restored — no zone carrier found."), Zones.Num());
+		}
+	}
+
+	UE_LOG(LogDP, Log, TEXT("SimGrid save restored %d/%d cells, %d ownership groups, %d/%d zones."),
+		Applied, Cells.Num(), ByOwner.Num(), ZonesApplied, Zones.Num());
 	return Applied;
 }
 

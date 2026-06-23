@@ -66,6 +66,19 @@ namespace Rep_NativeTags
 	 */
 	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_SpectatorCamera);
 
+	/**
+	 * Service key under which URep_HighlightSubsystem registers itself as an IRep_ReplayEventSource so
+	 * the timeline can poll auto-detected highlight markers, and a project can resolve the highlight
+	 * system to drive clips/reels.
+	 */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_Replay_Highlights);
+
+	/**
+	 * Service key a thumbnail-capture adapter registers an ISeam_ReplayThumbnailSource under, so the
+	 * share service can grab a share-card thumbnail without depending on RenderCore/RHI.
+	 */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_Replay_Thumbnail);
+
 	// --- Message-bus channels (children of the core DP.Bus root) ---
 
 	/** Root of the bus subtree the timeline subscribes to for "significant" gameplay events. */
@@ -80,6 +93,16 @@ namespace Rep_NativeTags
 	/** Broadcast when playback starts (payload: replay name). */
 	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_Replay_PlaybackStarted);
 
+	/**
+	 * Broadcast (locally) when the killcam component observes its owner's death, so the local killcam
+	 * director can begin a death-cam. Carries no replicated payload — it is produced from already-
+	 * replicated death state and re-broadcast locally.
+	 */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_Replay_Death);
+
+	/** Broadcast when the highlight detector promotes a window into a saved highlight moment. */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_Replay_HighlightDetected);
+
 	// --- Built-in timeline event identity tags (Rep.Event.* root) ---
 
 	/** Identity root for replay timeline marker events. */
@@ -93,4 +116,32 @@ namespace Rep_NativeTags
 
 	/** A message-bus event was promoted into the timeline. */
 	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_BusMessage);
+
+	/** A chapter marker the director/bookmarks dropped (a coarse, designer/viewer-authored section). */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_Chapter);
+
+	/** A death event recorded onto the timeline (drives killcam framing and highlight scoring). */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_Death);
+
+	// --- Auto-detected highlight identity tags (Rep.Highlight.* root) ---
+	//
+	// These are recorded back onto the timeline with a DISTINCT root from the source Rep.Event.* tags
+	// the detector ingests, so a promoted highlight marker can never be re-ingested and re-promoted.
+
+	/** Identity root for promoted highlight markers (distinct from the ingested Rep.Event.* root). */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Highlight);
+
+	/** A multi-kill highlight (several scoring events inside the rule-set window). */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Highlight_MultiKill);
+
+	/** A clutch highlight (a decisive event late in / against the odds of an encounter). */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Highlight_Clutch);
+
+	/** An objective highlight (a captured/completed objective worth surfacing). */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Highlight_Objective);
+
+	// --- Analytics event tags emitted by the highlight system (Rep.Analytics.* root) ---
+
+	/** Aggregate analytics event recorded when a highlight is detected (count + score attrs). */
+	DESIGNPATTERNSREPLAY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Analytics_HighlightDetected);
 }

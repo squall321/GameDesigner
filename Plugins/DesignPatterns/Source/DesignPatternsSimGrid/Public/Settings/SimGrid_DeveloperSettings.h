@@ -49,9 +49,13 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category = "SimGrid|Services")
 	FGameplayTag TileProviderServiceTag;
 
-	/** Hard ceiling on cells visited by a single flood-fill query, to bound worst-case cost. */
+	/**
+	 * Hard ceiling on cells visited by a single flood-fill query, to bound worst-case cost. Default
+	 * mirrors the historical USimGrid_QuerySubsystem cap so query behaviour is unchanged after the
+	 * settings merge (see MaxQueryRadiusCells/MaxRegionCells/MaxLineCells below, also from the query path).
+	 */
 	UPROPERTY(EditAnywhere, Config, Category = "SimGrid|Limits", meta = (ClampMin = "1"))
-	int32 MaxFloodFillCells = 4096;
+	int32 MaxFloodFillCells = 8192;
 
 	/** Hard ceiling, in cells, on the radius accepted by ring/disc queries. */
 	UPROPERTY(EditAnywhere, Config, Category = "SimGrid|Limits", meta = (ClampMin = "1"))
@@ -60,6 +64,36 @@ public:
 	/** Hard ceiling, in cells, on the length of a single rasterised line query. */
 	UPROPERTY(EditAnywhere, Config, Category = "SimGrid|Limits", meta = (ClampMin = "1"))
 	int32 MaxLineLength = 1024;
+
+	// --- Spatial-query collection caps (consumed by USimGrid_QuerySubsystem) ---
+	// Merged in from the former root-level USimGrid_DeveloperSettings so the module keeps a single
+	// settings record. These cap how many cells a query may COLLECT/visit, independent of radius.
+
+	/**
+	 * Hard cap on the radius (in cells) any region/line/neighbour query will honour. Larger requested
+	 * radii are clamped to this value. Bounds the worst-case cell count a single query can visit.
+	 * (Distinct from MaxQueryRadius above, which gates ring/disc queries; this gates region/neighbour.)
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "SimGrid|Limits", meta = (ClampMin = "1"))
+	int32 MaxQueryRadiusCells = 64;
+
+	/**
+	 * Hard cap on the number of cells any single region/region-shape query may COLLECT into its result.
+	 * Independent of radius so even a huge shape is bounded; the query stops collecting past this.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "SimGrid|Limits", meta = (ClampMin = "1"))
+	int32 MaxRegionCells = 4096;
+
+	/** Hard cap on the number of cells a single line (Bresenham) query may emit on huge grids. */
+	UPROPERTY(EditAnywhere, Config, Category = "SimGrid|Limits", meta = (ClampMin = "1"))
+	int32 MaxLineCells = 1024;
+
+	/**
+	 * Maximum number of footprint cells a single placement may contain. The server rejects a committed
+	 * placement whose footprint exceeds this, so a malicious client cannot submit an enormous footprint.
+	 */
+	UPROPERTY(EditAnywhere, Config, Category = "SimGrid|Placement", meta = (ClampMin = "1"))
+	int32 MaxFootprintCells = 256;
 
 	/**
 	 * Optional finite bounds for the grid, in cells (inclusive min, exclusive max on each axis). When

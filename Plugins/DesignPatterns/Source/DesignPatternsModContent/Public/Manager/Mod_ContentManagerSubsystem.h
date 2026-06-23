@@ -8,6 +8,7 @@
 #include "UObject/WeakInterfacePtr.h"
 #include "Seam/Mod_ContentSource.h"
 #include "Seam/Mod_PackValidator.h"
+#include "Mod/Seam_ModResolution.h"
 #include "Mod_ContentManagerSubsystem.generated.h"
 
 class UMod_DeveloperSettings;
@@ -134,6 +135,21 @@ public:
 	/** Remove a previously registered content source. Safe to call with an unknown/expired source. */
 	void UnregisterContentSource(const TScriptInterface<IMod_ContentSource>& Source);
 
+	/**
+	 * ADDITIVE: install an optional resolution-policy seam this manager will CONSULT for load-order
+	 * tie-breaking (it does not replace the topological dependency sort, which is always honoured). The
+	 * policy is held WEAKLY (TWeakInterfacePtr, pruned on use) so a world-scoped policy cannot leak across
+	 * worlds — exactly like the content-source / validator seams. Passing an empty/invalid interface (or
+	 * never calling this) keeps the shipped ResolveMountOrder behaviour unchanged (the inert default).
+	 *
+	 * The policy is also auto-resolvable from the service locator under DP.Service.Mod.Resolution; this
+	 * is the explicit native path for projects that prefer direct registration.
+	 */
+	void SetResolutionPolicy(const TScriptInterface<ISeam_ModResolutionPolicy>& InPolicy);
+
+	/** Clear a previously-installed resolution policy (revert to the inert default). */
+	void ClearResolutionPolicy();
+
 	// ---- Discovery ----
 
 	/**
@@ -208,6 +224,16 @@ private:
 	 * each discovery and never stored.)
 	 */
 	TArray<TWeakInterfacePtr<IMod_ContentSource>> WeakSources;
+
+	/**
+	 * Optional resolution-policy seam, held WEAKLY so a world-scoped policy cannot be pinned alive by this
+	 * GI subsystem across worlds. Pruned on use. When unset (or expired) the manager keeps its shipped
+	 * ordering. Re-resolved from the locator (DP.Service.Mod.Resolution) when the explicit ref is absent.
+	 */
+	TWeakInterfacePtr<ISeam_ModResolutionPolicy> WeakResolutionPolicy;
+
+	/** Resolve the resolution policy (explicit weak ref first, then the locator). Null when none. */
+	TScriptInterface<ISeam_ModResolutionPolicy> ResolveResolutionPolicy() const;
 
 	// ---- Cached engine state ----
 

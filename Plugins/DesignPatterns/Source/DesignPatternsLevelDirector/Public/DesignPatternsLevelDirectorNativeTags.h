@@ -52,4 +52,33 @@ namespace LvlNativeTags
 
 	/** Persistence kind of a procedural placer's manifest record (ISeam_Persistable::GetPersistenceKind). */
 	DESIGNPATTERNSLEVELDIRECTOR_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Lvl_Placement);
+
+	// ---- Pacing additions (deep procedural/streaming layer) -------------------------------------
+	//
+	// These extend the existing anchor set additively. They keep the LevelDirector's cross-module
+	// surface seam+bus only: pacing drives encounters through the SHARED ISeam_EncounterDirector
+	// (resolved under Service_Lvl_EncounterDirector), and graphs persist under their own kind tag so
+	// ULvl_SaveGame's single Placement kind is left untouched.
+
+	/**
+	 * Bus channel: a region's pacing crossed the ESCALATE threshold (tension rising; the pacing
+	 * director re-activated the encounter at a higher ProgressionInput). Payload FLvl_PacingEventPayload.
+	 */
+	DESIGNPATTERNSLEVELDIRECTOR_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_Lvl_Pacing_Escalated);
+
+	/** Bus channel: a region's pacing crossed the RELAX threshold (tension falling). */
+	DESIGNPATTERNSLEVELDIRECTOR_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_Lvl_Pacing_Relaxed);
+
+	/**
+	 * Service-locator key under which an encounter director is resolved (ISeam_EncounterDirector).
+	 * The IMPLEMENTER is a thin AI-side adapter that self-registers here; the LevelDirector pacing
+	 * subsystem only RESOLVES it (weakly, re-resolved on use). Unresolved -> pacing no-ops.
+	 */
+	DESIGNPATTERNSLEVELDIRECTOR_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_Lvl_EncounterDirector);
+
+	/**
+	 * Persistence kind of a dungeon-graph record (ISeam_Persistable::GetPersistenceKind on
+	 * ULvl_GraphGeneratorComponent). Distinct from Persist_Lvl_Placement so graphs save independently.
+	 */
+	DESIGNPATTERNSLEVELDIRECTOR_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Lvl_Graph);
 }

@@ -33,4 +33,10 @@ public:
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Survival|Needs")
 	float ApplyNeedsDamage(float DamageAmount, FGameplayTag SourceNeedTag);
+	/**
+	 * Inert native default: a class that implements this interface but does not override
+	 * ApplyNeedsDamage reports zero damage applied, so starvation/dehydration stays cosmetic
+	 * rather than crashing the Execute_ wrapper. Real health sinks override this.
+	 */
+	virtual float ApplyNeedsDamage_Implementation(float DamageAmount, FGameplayTag SourceNeedTag) { return 0.f; }
 };

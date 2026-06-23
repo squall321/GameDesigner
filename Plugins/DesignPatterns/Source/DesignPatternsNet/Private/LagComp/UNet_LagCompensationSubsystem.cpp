@@ -54,6 +54,13 @@ void UNet_LagCompensationSubsystem::Deinitialize()
 	}
 	Tracks.Reset();
 
+	// Remove our WeakObserved entry from the GameInstance-scoped locator so it doesn't dangle past world
+	// teardown (matches the other Net subsystems / states).
+	if (UDP_ServiceLocatorSubsystem* Locator = GetLocator())
+	{
+		Locator->UnregisterService(NetNativeTags::Service_Net_LagComp);
+	}
+
 	Super::Deinitialize();
 }
 

@@ -15,10 +15,15 @@ public class DesignPatternsLocalization : ModuleRules
 		{
 			"Core", "CoreUObject", "Engine", "GameplayTags",
 			"UMG", "FieldNotification",
+			// Slate/SlateCore for FSlateFontInfo composed inside ULoc_FontSubsystem ONLY. The font seam in
+			// DesignPatternsSeams stays Slate-free (it returns soft font-face refs + a bool RTL); the
+			// concrete FSlateFontInfo never crosses the seam, so the Seams leaf invariant is preserved.
+			"Slate", "SlateCore",
 			"DesignPatterns", "DesignPatternsUI", "DesignPatternsSeams"
 		});
 
 		// FText / StringTable / culture (FInternationalization) live in Core/CoreUObject — no extra module.
+		// Engine covers USoundBase + FStreamableManager (asset loading) used by the voice subsystem.
 		PrivateDependencyModuleNames.AddRange(new string[] { "DeveloperSettings" });
 
 		if (Target.Version.MajorVersion == 5 && Target.Version.MinorVersion <= 4)

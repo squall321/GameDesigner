@@ -42,6 +42,18 @@ namespace SimAgNativeTags
 	/** Service key for the crowd flow-field provider (USimAg_FlowFieldSubsystem, ISimAg_FlowField). */
 	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_FlowField);
 
+	/**
+	 * Service key for the world reservation router (USimAg_JobReservationSubsystem, ISeam_JobReservation).
+	 * Lets haul / job-chain behaviours lock a single resource without depending on the concrete subsystem.
+	 */
+	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_JobReservation);
+
+	/** Root for sim-agent memory subject identities (SimAg.Memory.Resource / Threat / Agent...). */
+	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Memory);
+
+	/** Root for sim-agent mood/emotion axis identities (SimAg.Mood.Happiness / Stress / Anger...). */
+	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Mood);
+
 	/** Root for persistence-kind tags this module's save participants advertise (children of DP.Persist). */
 	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist);
 
@@ -50,6 +62,12 @@ namespace SimAgNativeTags
 
 	/** Persistence kind advertised by an agent component (for ISeam_Persistable record routing). */
 	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Agent);
+
+	/** Persistence kind advertised by the reservation subsystem (for ISeam_Persistable record routing). */
+	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Reservation);
+
+	/** Persistence kind advertised by an agent memory component (for ISeam_Persistable record routing). */
+	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_Memory);
 
 	/** Root for message-bus channels broadcast by this module (children of DP.Bus by convention). */
 	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus);
@@ -62,4 +80,10 @@ namespace SimAgNativeTags
 
 	/** Bus channel fired when a job posting changes state (payload: FSimAg_JobEvent). */
 	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_JobChanged);
+
+	/** Bus channel fired when an agent's mood axis changes notably (payload: FSimAg_MoodEvent). */
+	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_MoodChanged);
+
+	/** Bus channel fired when two agents have a social interaction (payload: FSimAg_SocialEvent). */
+	DESIGNPATTERNSSIMAGENTS_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_SocialInteraction);
 }

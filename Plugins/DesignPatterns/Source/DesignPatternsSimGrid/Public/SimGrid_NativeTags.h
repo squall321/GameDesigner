@@ -21,6 +21,44 @@ namespace SimGridTags
 	/** Service-locator key for the authoritative ownership/territory carrier actor or component. */
 	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_TerritoryCarrier);
 
+	// --- Deep-feature service keys (resolved by the new feature subsystems) ---
+
+	/** Service-locator key for the multi-layer read seam (ISeam_LayeredTileProviderRead). */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_LayeredTileProvider);
+
+	/** Service-locator key for the per-cell height seam (ISeam_HeightProvider). */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_HeightProvider);
+
+	/** Service-locator key for the authoritative zone/district carrier actor. */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_ZoneCarrier);
+
+	/** Service-locator key under which per-team fog carriers are published. */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_FogCarrier);
+
+	// --- Pathfinding failure reasons (emitted by the path query subsystem) ---
+
+	/** No path exists between the requested start and goal (goal unreachable / walled off). */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(PathFail_NoPath);
+
+	/** The start or goal cell was itself not walkable (cannot begin/end there). */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(PathFail_BlockedEndpoint);
+
+	/** The search hit the node budget before reaching the goal and gave up. */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(PathFail_NodeBudget);
+
+	// --- Zone reason / state leaves ---
+
+	/** A zone-growth attempt was blocked because the candidate cell was occupied/non-buildable. */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(ZoneFail_NotBuildable);
+
+	/** A zone-growth attempt was blocked because the candidate cell was outside the zone's owner. */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(ZoneFail_NotOwned);
+
+	// --- Fog reason leaves ---
+
+	/** A reveal/conceal request named a team with no carrier (nothing to reveal into). */
+	DESIGNPATTERNSSIMGRID_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(FogFail_NoCarrier);
+
 	// --- Placement failure reason tags (emitted by the shipped rules) ---
 
 	/** A footprint cell fell outside the grid bounds. */

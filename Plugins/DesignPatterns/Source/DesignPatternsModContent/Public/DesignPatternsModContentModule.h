@@ -100,4 +100,42 @@ namespace ModTags
 
 	/** Bus channel broadcast when a pack is rejected at validate-before-activate (payload FMod_PackMountEvent). */
 	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_Rejected);
+
+	// ---- Additive deepening anchors (signature/catalog/resolution seams, config store, hot-reload) ----
+
+	/** Service-locator key the signature verifier seam (ISeam_ModSignatureVerifier) registers under. */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_ModSignature);
+
+	/** Service-locator key the catalog/store source seam (ISeam_ModCatalogSource) registers under. */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_ModCatalog);
+
+	/** Service-locator key the resolution-policy seam (ISeam_ModResolutionPolicy) registers under. */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_ModResolution);
+
+	/** Bus channel broadcast when a pack's player-facing config changes (payload FMod_SettingsChangedEvent). */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_SettingsChanged);
+
+	/** Bus channel broadcast when a catalog source finishes a download / its listing set changes. */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_CatalogChanged);
+
+	/** Bus channel broadcast when an editor hot-reload re-mounts a pack (payload FMod_PackMountEvent). */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_HotReloaded);
+
+	/** Bus channel broadcast when a pack is refused because its trust verdict was Untrusted. */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_TrustRejected);
+
+	/** Root for per-pack settings-config persistence kinds (children of DP.Persist.Mod). */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist);
+
+	/** Persistence kind tag the per-pack config store advertises via ISeam_Persistable. */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Persist_PackConfig);
+
+	/** Reason leaf: a pack was rejected because its trust verdict was Untrusted. */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reason_Untrusted);
+
+	/** Reason leaf: a pack's manifest failed hash-integrity verification. */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reason_HashMismatch);
+
+	/** Reason leaf: a data-tag override conflict between two or more packs. */
+	DESIGNPATTERNSMODCONTENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reason_TagConflict);
 }

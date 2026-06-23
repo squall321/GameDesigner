@@ -138,6 +138,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ModContent|Registry")
 	TArray<FGameplayTag> ListOverriddenTags() const;
 
+	/**
+	 * Additive read accessor: every contributed override for Tag (the full override CHAIN for that tag),
+	 * sorted descending by effective precedence (highest LoadPriority first, ties to the later-mounted
+	 * pack) so element 0 is the current winner. Returns copies of the private store — purely additive,
+	 * never reaches into private state from outside. Empty when no pack overrides Tag.
+	 *
+	 * This is the front door for the content-query / override-chain inspector area, which must never
+	 * touch AllOverrides / WinningByTag directly.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ModContent|Registry")
+	TArray<FMod_AssetOverride> GetOverridesForTag(FGameplayTag Tag) const;
+
+	/**
+	 * Additive read accessor: a flat copy of EVERY contributed override across all packs (in no
+	 * particular order). For tooling that wants to walk the whole override layer (asset-origin mapping,
+	 * conflict inspection). Load-free; copies only.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "ModContent|Registry")
+	TArray<FMod_AssetOverride> GetAllOverrides() const;
+
 	/** Number of tags currently overridden by mounted packs. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ModContent|Registry")
 	int32 NumOverrides() const { return WinningByTag.Num(); }

@@ -29,5 +29,13 @@ public class DesignPatternsModContent : ModuleRules
 		{
 			PublicDependencyModuleNames.Add("StructUtils");
 		}
+
+		// Editor-only hot-reload watches the discovery directories via IDirectoryWatcher. Gating on
+		// Target.bBuildEditor (not just WITH_EDITOR in the .cpp) is required so the module is not linked
+		// into a shipping build — the entire hot-reload subsystem is compiled out there too.
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("DirectoryWatcher");
+		}
 	}
 }

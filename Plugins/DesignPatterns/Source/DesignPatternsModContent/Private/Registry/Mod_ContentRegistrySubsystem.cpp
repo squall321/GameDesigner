@@ -153,6 +153,50 @@ TArray<FGameplayTag> UMod_ContentRegistrySubsystem::ListOverriddenTags() const
 	return Out;
 }
 
+TArray<FMod_AssetOverride> UMod_ContentRegistrySubsystem::GetOverridesForTag(FGameplayTag Tag) const
+{
+	TArray<FMod_AssetOverride> Chain;
+	if (!Tag.IsValid())
+	{
+		return Chain;
+	}
+
+	// Gather every contribution for this tag across all packs (copies only — never expose internal refs).
+	for (const TPair<FGameplayTag, TArray<FMod_AssetOverride>>& PackPair : AllOverrides)
+	{
+		for (const FMod_AssetOverride& Candidate : PackPair.Value)
+		{
+			if (Candidate.DataTag == Tag)
+			{
+				Chain.Add(Candidate);
+			}
+		}
+	}
+
+	// Sort by effective precedence (descending) so element 0 is the current winner. This mirrors the
+	// RecomputeWinners policy exactly: higher LoadPriority first, ties broken by later mount sequence.
+	Chain.Sort([this](const FMod_AssetOverride& A, const FMod_AssetOverride& B)
+	{
+		if (A.LoadPriority != B.LoadPriority)
+		{
+			return A.LoadPriority > B.LoadPriority;
+		}
+		return PackMountSequence.FindRef(A.SourcePackId) > PackMountSequence.FindRef(B.SourcePackId);
+	});
+
+	return Chain;
+}
+
+TArray<FMod_AssetOverride> UMod_ContentRegistrySubsystem::GetAllOverrides() const
+{
+	TArray<FMod_AssetOverride> Flat;
+	for (const TPair<FGameplayTag, TArray<FMod_AssetOverride>>& PackPair : AllOverrides)
+	{
+		Flat.Append(PackPair.Value);
+	}
+	return Flat;
+}
+
 void UMod_ContentRegistrySubsystem::ApplyPackOverrides(FGameplayTag PackId, const TArray<FMod_AssetOverride>& Overrides)
 {
 	if (!PackId.IsValid())

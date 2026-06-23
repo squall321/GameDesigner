@@ -2,7 +2,9 @@
 
 #include "Save/SimAg_SaveGame.h"
 #include "Jobs/SimAg_JobBoardSubsystem.h"
+#include "Jobs/SimAg_JobReservationSubsystem.h"
 #include "Brain/SimAg_AgentComponent.h"
+#include "Memory/SimAg_MemoryComponent.h"
 #include "DesignPatternsSimAgentsTags.h"
 #include "Persist/Seam_Persistable.h"
 #include "Core/DPSubsystemLibrary.h"
@@ -54,7 +56,21 @@ bool USimAg_SaveGame::CaptureFrom(UWorld* World)
 		}
 	}
 
-	// 2) Capture every agent component in the world (one participant per agent).
+	// 1b) Capture the reservation router (a single world-scoped participant). ADDITIVE: the gather here is
+	// not interface-generic, so new world participants are captured by extending this body.
+	if (USimAg_JobReservationSubsystem* Reservation = World->GetSubsystem<USimAg_JobReservationSubsystem>())
+	{
+		FInstancedStruct Record;
+		ISeam_Persistable::Execute_CaptureState(Reservation, Record);
+		if (Record.IsValid())
+		{
+			ParticipantRecords.Add(Record);
+			ParticipantKinds.Add(ISeam_Persistable::Execute_GetPersistenceKind(Reservation));
+		}
+	}
+
+	// 2) Capture every agent component in the world (one participant per agent), plus its memory component
+	// (a second per-agent participant routed by the new Persist_Memory kind).
 	int32 AgentCount = 0;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
@@ -72,6 +88,16 @@ bool USimAg_SaveGame::CaptureFrom(UWorld* World)
 				ParticipantRecords.Add(Record);
 				ParticipantKinds.Add(ISeam_Persistable::Execute_GetPersistenceKind(Agent));
 				++AgentCount;
+			}
+		}
+		if (USimAg_MemoryComponent* Memory = Actor->FindComponentByClass<USimAg_MemoryComponent>())
+		{
+			FInstancedStruct Record;
+			ISeam_Persistable::Execute_CaptureState(Memory, Record);
+			if (Record.IsValid())
+			{
+				ParticipantRecords.Add(Record);
+				ParticipantKinds.Add(ISeam_Persistable::Execute_GetPersistenceKind(Memory));
 			}
 		}
 	}
@@ -102,8 +128,10 @@ int32 USimAg_SaveGame::RestoreInto(UWorld* World) const
 		return 0;
 	}
 
-	// Build a fast lookup of agents by their stable id so agent records route to the right pawn.
+	// Build a fast lookup of agents by their stable id so agent records route to the right pawn, plus a
+	// parallel map of their memory components (keyed by the same agent id) for memory-record routing.
 	TMap<FGuid, USimAg_AgentComponent*> AgentsById;
+	TMap<FGuid, USimAg_MemoryComponent*> MemoryByAgentId;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		AActor* Actor = *It;
@@ -114,10 +142,15 @@ int32 USimAg_SaveGame::RestoreInto(UWorld* World) const
 		if (USimAg_AgentComponent* Agent = Actor->FindComponentByClass<USimAg_AgentComponent>())
 		{
 			AgentsById.Add(Agent->GetAgentId().Value, Agent);
+			if (USimAg_MemoryComponent* Memory = Actor->FindComponentByClass<USimAg_MemoryComponent>())
+			{
+				MemoryByAgentId.Add(Agent->GetAgentId().Value, Memory);
+			}
 		}
 	}
 
 	USimAg_JobBoardSubsystem* Board = World->GetSubsystem<USimAg_JobBoardSubsystem>();
+	USimAg_JobReservationSubsystem* Reservation = World->GetSubsystem<USimAg_JobReservationSubsystem>();
 
 	int32 Applied = 0;
 	for (int32 Index = 0; Index < ParticipantRecords.Num(); ++Index)
@@ -135,6 +168,31 @@ int32 USimAg_SaveGame::RestoreInto(UWorld* World) const
 			{
 				ISeam_Persistable::Execute_RestoreState(Board, Record);
 				++Applied;
+			}
+		}
+		else if (Kind.MatchesTag(SimAgNativeTags::Persist_Reservation))
+		{
+			if (Reservation)
+			{
+				ISeam_Persistable::Execute_RestoreState(Reservation, Record);
+				++Applied;
+			}
+		}
+		else if (Kind.MatchesTag(SimAgNativeTags::Persist_Memory))
+		{
+			// Route by the record's agent id to the matching memory component.
+			if (const FSimAg_MemoryRecord* MemRec = Record.GetPtr<FSimAg_MemoryRecord>())
+			{
+				if (USimAg_MemoryComponent** Found = MemoryByAgentId.Find(MemRec->AgentId.Value))
+				{
+					ISeam_Persistable::Execute_RestoreState(*Found, Record);
+					++Applied;
+				}
+				else
+				{
+					UE_LOG(LogDP, Verbose, TEXT("SimAg save RestoreInto: no live memory for agent %s."),
+						*MemRec->AgentId.ToString());
+				}
 			}
 		}
 		else if (Kind.MatchesTag(SimAgNativeTags::Persist_Agent))

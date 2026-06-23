@@ -141,6 +141,52 @@ void UMod_ContentManagerSubsystem::PruneSources()
 	});
 }
 
+void UMod_ContentManagerSubsystem::SetResolutionPolicy(const TScriptInterface<ISeam_ModResolutionPolicy>& InPolicy)
+{
+	if (UObject* Obj = InPolicy.GetObject())
+	{
+		if (Obj->GetClass()->ImplementsInterface(USeam_ModResolutionPolicy::StaticClass()))
+		{
+			WeakResolutionPolicy = TWeakInterfacePtr<ISeam_ModResolutionPolicy>(InPolicy);
+			return;
+		}
+	}
+	UE_LOG(LogDP, Warning, TEXT("ModContent: SetResolutionPolicy ignored a null/non-implementing policy."));
+}
+
+void UMod_ContentManagerSubsystem::ClearResolutionPolicy()
+{
+	WeakResolutionPolicy.Reset();
+}
+
+TScriptInterface<ISeam_ModResolutionPolicy> UMod_ContentManagerSubsystem::ResolveResolutionPolicy() const
+{
+	TScriptInterface<ISeam_ModResolutionPolicy> Result;
+
+	// Explicit weak ref first (pruned on use): if it expired, drop it.
+	if (WeakResolutionPolicy.IsValid())
+	{
+		UObject* Obj = WeakResolutionPolicy.GetObject();
+		Result.SetObject(Obj);
+		Result.SetInterface(Cast<ISeam_ModResolutionPolicy>(Obj));
+		return Result;
+	}
+
+	// Fall back to the service locator (DP.Service.Mod.Resolution).
+	if (const UDP_ServiceLocatorSubsystem* Locator = GetLocator())
+	{
+		if (UObject* Provider = Locator->ResolveService(ModTags::Service_ModResolution))
+		{
+			if (Provider->GetClass()->ImplementsInterface(USeam_ModResolutionPolicy::StaticClass()))
+			{
+				Result.SetObject(Provider);
+				Result.SetInterface(Cast<ISeam_ModResolutionPolicy>(Provider));
+			}
+		}
+	}
+	return Result;
+}
+
 // =====================================================================================================
 // Discovery
 // =====================================================================================================
@@ -386,9 +432,28 @@ void UMod_ContentManagerSubsystem::ResolveMountOrder()
 		}
 	}
 
-	// Stable tie-break ordering of the eligible set before the sort, so the topo result is deterministic.
-	Eligible.Sort([this, TiePolicy, Settings](const FGameplayTag& A, const FGameplayTag& B)
+	// ADDITIVE: when an optional resolution policy is installed, pre-score every eligible pack so its
+	// score can act as the HIGHEST-precedence tie-break among independent packs (higher score sorts
+	// EARLIER here, mirroring the existing "lower index mounts first" convention). With no policy the
+	// score map is empty and FindRef yields 0 for all, so the shipped ordering is bit-for-bit unchanged.
+	TMap<FGameplayTag, int32> PolicyScores;
+	if (TScriptInterface<ISeam_ModResolutionPolicy> Policy = ResolveResolutionPolicy())
 	{
+		for (const FGameplayTag& Id : Eligible)
+		{
+			PolicyScores.Add(Id, ISeam_ModResolutionPolicy::Execute_ScoreLoadOrder(Policy.GetObject(), Id));
+		}
+	}
+
+	// Stable tie-break ordering of the eligible set before the sort, so the topo result is deterministic.
+	Eligible.Sort([this, TiePolicy, Settings, &PolicyScores](const FGameplayTag& A, const FGameplayTag& B)
+	{
+		if (PolicyScores.Num() > 0)
+		{
+			const int32 Sa = PolicyScores.FindRef(A);
+			const int32 Sb = PolicyScores.FindRef(B);
+			if (Sa != Sb) { return Sa > Sb; } // higher-scored pack mounts earlier
+		}
 		if (TiePolicy == EMod_MountOrderPolicy::Alphabetical)
 		{
 			return A.GetTagName().LexicalLess(B.GetTagName());

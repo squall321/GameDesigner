@@ -17,13 +17,20 @@ namespace SimAgNativeTags
 	UE_DEFINE_GAMEPLAY_TAG(Service_Clock, "DP.Service.SimAgents.Clock");
 	UE_DEFINE_GAMEPLAY_TAG(Service_JobBoard, "DP.Service.SimAgents.JobBoard");
 	UE_DEFINE_GAMEPLAY_TAG(Service_FlowField, "DP.Service.SimAgents.FlowField");
+	UE_DEFINE_GAMEPLAY_TAG(Service_JobReservation, "DP.Service.SimAgents.JobReservation");
+	UE_DEFINE_GAMEPLAY_TAG(Memory, "SimAg.Memory");
+	UE_DEFINE_GAMEPLAY_TAG(Mood, "SimAg.Mood");
 	UE_DEFINE_GAMEPLAY_TAG(Persist, "DP.Persist.SimAgents");
 	UE_DEFINE_GAMEPLAY_TAG(Persist_JobBoard, "DP.Persist.SimAgents.JobBoard");
 	UE_DEFINE_GAMEPLAY_TAG(Persist_Agent, "DP.Persist.SimAgents.Agent");
+	UE_DEFINE_GAMEPLAY_TAG(Persist_Reservation, "DP.Persist.SimAgents.Reservation");
+	UE_DEFINE_GAMEPLAY_TAG(Persist_Memory, "DP.Persist.SimAgents.Memory");
 	UE_DEFINE_GAMEPLAY_TAG(Bus, "DP.Bus.SimAgents");
 	UE_DEFINE_GAMEPLAY_TAG(Bus_NeedCritical, "DP.Bus.SimAgents.NeedCritical");
 	UE_DEFINE_GAMEPLAY_TAG(Bus_ActivityChanged, "DP.Bus.SimAgents.ActivityChanged");
 	UE_DEFINE_GAMEPLAY_TAG(Bus_JobChanged, "DP.Bus.SimAgents.JobChanged");
+	UE_DEFINE_GAMEPLAY_TAG(Bus_MoodChanged, "DP.Bus.SimAgents.MoodChanged");
+	UE_DEFINE_GAMEPLAY_TAG(Bus_SocialInteraction, "DP.Bus.SimAgents.SocialInteraction");
 }
 
 void FDesignPatternsSimAgentsModule::StartupModule()

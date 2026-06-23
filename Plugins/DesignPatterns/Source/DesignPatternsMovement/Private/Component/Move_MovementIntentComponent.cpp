@@ -72,8 +72,11 @@ void UMove_MovementIntentComponent::RequestSpecialMove(FGameplayTag RequestTag)
 
 	if (GetOwnerRole() == ROLE_Authority)
 	{
-		// Listen server / standalone: apply directly (still re-derives pre-conditions).
-		if (ServerRequestSpecialMove_Validate(RequestTag, Context))
+		// Listen server / standalone: apply directly. The host MUST pass the SAME full pre-condition
+		// re-derivation a remote client is held to (stamina/cooldown/traversal), otherwise the locally
+		// controlled host could admit a move a remote client could not — an authority-side bypass.
+		if (ServerRequestSpecialMove_Validate(RequestTag, Context) &&
+			ValidateSpecialMovePreConditions(RequestTag))
 		{
 			ApplyAuthoritativeSpecialMove(RequestTag);
 		}
@@ -99,7 +102,24 @@ void UMove_MovementIntentComponent::ServerRequestSpecialMove_Implementation(FGam
 		return;
 	}
 
-	// --- Re-derive pre-conditions the client cannot be trusted on ---
+	// Full server-side pre-condition re-derivation; identical to the host path so neither role can admit a
+	// move the other could not. May remap RequestTag (mantle<->vault) to the server's verdict.
+	if (!ValidateSpecialMovePreConditions(RequestTag))
+	{
+		return;
+	}
+
+	ApplyAuthoritativeSpecialMove(RequestTag);
+}
+
+bool UMove_MovementIntentComponent::ValidateSpecialMovePreConditions(FGameplayTag& RequestTag)
+{
+	// --- Re-derive pre-conditions the client cannot be trusted on. Shared by the listen-server/standalone
+	// host path and the remote-client RPC path so both roles are admitted on IDENTICAL terms. ---
+	//
+	// NOTE: this validator has authoritative side effects (it consumes the action cooldown via
+	// ActivateActionByTag and writes the traversal target onto the blackboard). It must therefore be called
+	// EXACTLY ONCE per admission, immediately before ApplyAuthoritativeSpecialMove — never speculatively.
 
 	// 1) Stamina (dash/dodge): server reads its OWN stamina meter.
 	const bool bIsDash = (RequestTag == MoveNativeTags::Request_Dash) || (RequestTag == MoveNativeTags::Request_Dodge);
@@ -110,7 +130,7 @@ void UMove_MovementIntentComponent::ServerRequestSpecialMove_Implementation(FGam
 			if (Stamina->IsExhausted() || !Stamina->HasStamina(Stamina->GetDashCost()))
 			{
 				UE_LOG(LogDPFSM, Verbose, TEXT("[Movement] Server rejected dash: insufficient stamina."));
-				return;
+				return false;
 			}
 		}
 	}
@@ -129,7 +149,7 @@ void UMove_MovementIntentComponent::ServerRequestSpecialMove_Implementation(FGam
 			{
 				UE_LOG(LogDPFSM, Verbose, TEXT("[Movement] Server rejected %s: action on cooldown/blocked."),
 					*RequestTag.ToString());
-				return;
+				return false;
 			}
 		}
 	}
@@ -142,7 +162,7 @@ void UMove_MovementIntentComponent::ServerRequestSpecialMove_Implementation(FGam
 		ACharacter* Character = Move ? Move->GetCharacter() : nullptr;
 		if (!Move || !Character)
 		{
-			return;
+			return false;
 		}
 
 		const UMove_DeveloperSettings* Settings = UMove_DeveloperSettings::Get();
@@ -160,7 +180,7 @@ void UMove_MovementIntentComponent::ServerRequestSpecialMove_Implementation(FGam
 		if (!Ledge.bFound)
 		{
 			UE_LOG(LogDPFSM, Verbose, TEXT("[Movement] Server rejected traversal: no ledge found."));
-			return;
+			return false;
 		}
 		// Reject a mismatched request (client asked to vault a tall ledge, or mantle a low one).
 		const bool bWantVault = (RequestTag == MoveNativeTags::Request_Vault);
@@ -177,7 +197,7 @@ void UMove_MovementIntentComponent::ServerRequestSpecialMove_Implementation(FGam
 		}
 	}
 
-	ApplyAuthoritativeSpecialMove(RequestTag);
+	return true;
 }
 
 void UMove_MovementIntentComponent::ApplyAuthoritativeSpecialMove(FGameplayTag RequestTag)

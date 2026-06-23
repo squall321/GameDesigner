@@ -7,6 +7,7 @@
 #include "Save/DPSaveGame.h"
 #include "GameplayTagContainer.h"
 #include "Placement/Lvl_PlacementTypes.h"
+#include "Persist/Seam_Persistable.h"
 
 // FInstancedStruct lives in StructUtils on 5.3/5.4, merged into CoreUObject on 5.5.
 #if __has_include("StructUtils/InstancedStruct.h")

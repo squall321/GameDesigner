@@ -70,6 +70,32 @@ namespace DPLocTags
 	 */
 	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_TextToSpeech);
 
+	/**
+	 * Service-locator key under which the live ULoc_VoiceSubsystem publishes itself (weak-observed) so other
+	 * systems can request per-culture VO playback without hard-including this module.
+	 */
+	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_Voice);
+
+	/**
+	 * Service-locator key under which the host project registers its ISeam_LipSync backend (a facial-anim /
+	 * MetaHuman driver). The voice subsystem resolves it weakly; inert (silent) default when unresolved.
+	 */
+	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_LipSync);
+
+	/**
+	 * Service-locator key under which ULoc_FontSubsystem publishes its ISeam_FontProfileProvider (weak-
+	 * observed) so UI can resolve the active culture's font faces + RTL flag without hard-including this
+	 * module or pulling Slate into the Seams leaf.
+	 */
+	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_FontProfile);
+
+	/**
+	 * Service-locator key under which the platform input-glyph provider publishes its ISeam_InputGlyphProvider.
+	 * Owned by the Platform module; this module only RESOLVES it (the accessibility focus router injects
+	 * binding labels for focused widgets). Mirrors the canonical DP.Service.Platform.Glyphs key.
+	 */
+	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Service_InputGlyphs);
+
 	// --- Message-bus channels the subtitle subsystem listens on / publishes ---
 
 	/** Dialogue-line channel: payloads carry an FLoc_SubtitleLine to surface as a subtitle. */
@@ -87,10 +113,38 @@ namespace DPLocTags
 	/** Notification channel the subtitle subsystem BROADCASTS on when the visible set changes. */
 	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_SubtitleChanged);
 
+	/**
+	 * Notification channel ULoc_RichSubtitleSubsystem listens on for accessibility-driven recompute. It is
+	 * the SAME Bus_SubtitleChanged the base subtitle subsystem broadcasts on; the rich layer treats it as a
+	 * pure "visible set changed, recompute styling" signal and never as line content.
+	 */
+	// (Bus_SubtitleChanged is declared above; documented here for the rich subtitle observer.)
+
+	/**
+	 * UI-focus channel: the UI module BROADCASTS an FLoc_UIFocusEvent (focus FText + category tag) when the
+	 * focused widget changes. The accessibility focus router LISTENS here and routes the focus text to TTS.
+	 * Owned by this module so the contract has a stable shipped key even if no UI ever broadcasts.
+	 */
+	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bus_UIFocusChanged);
+
 	// --- Canonical TTS routing categories (passed to ISeam_TextToSpeech::Speak) ---
 
 	/** TTS category for spoken subtitle/narration lines. */
 	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TTS_Subtitle);
+
+	/** TTS category for spoken UI-focus / screen-reader text (routed by the accessibility focus router). */
+	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TTS_UIFocus);
+
+	// --- Canonical font-role anchors (designers extend the DP.Loc.Font root) ---
+
+	/** Font role: body / paragraph text (the default role when a role tag is unset). */
+	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Font_Body);
+
+	/** Font role: heading / title text. */
+	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Font_Heading);
+
+	/** Font role: subtitle / caption text. */
+	DESIGNPATTERNSLOCALIZATION_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Font_Subtitle);
 
 	// --- Canonical subtitle priority anchors (designers extend the DP.Loc.Subtitle.Priority root) ---
 

@@ -82,6 +82,8 @@ void UNet_PredictedStateComponent::SubmitInput(const FSeam_NetValue& Payload, fl
 		Snapshot.AckedSequence = LastAckedSequence;
 		Snapshot.State = PredictedState;
 		Snapshot.ServerTimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+		// Push-model dirty mark so OnRep_Snapshot fires on the owning client (matches UNet_AuthorityComponent).
+		MARK_PROPERTY_DIRTY_FROM_NAME(UNet_PredictedStateComponent, Snapshot, this);
 		return;
 	}
 
@@ -151,6 +153,8 @@ void UNet_PredictedStateComponent::ServerSubmitInput_Implementation(FNet_Predict
 	Snapshot.AckedSequence = LastAckedSequence;
 	Snapshot.State = PredictedState;
 	Snapshot.ServerTimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	// Push-model dirty mark so OnRep_Snapshot fires on the owning client (matches UNet_AuthorityComponent).
+	MARK_PROPERTY_DIRTY_FROM_NAME(UNet_PredictedStateComponent, Snapshot, this);
 }
 
 bool UNet_PredictedStateComponent::StatesMatch(const FSeam_NetValue& A, const FSeam_NetValue& B) const

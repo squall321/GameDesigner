@@ -73,6 +73,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|Quest|VM")
 	void Unbind();
 
+	//~ Begin UObject
+	virtual void BeginDestroy() override;
+	//~ End UObject
+
 	/** Choose which quest the tracker UI is focused on (otherwise the first active quest is used). */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Quest|VM")
 	void SetTrackedQuest(FGameplayTag QuestTag);

@@ -7,6 +7,7 @@
 #include "GameplayTagContainer.h"
 #include "Grid/Seam_GridCoord.h"
 #include "Identity/Seam_EntityId.h"
+#include "Zone/SimGrid_ZoneTypes.h"
 
 // FInstancedStruct version-gated include. A full FInstancedStruct is fine in a SAVE object (it is
 // serialized via UPROPERTY SaveGame, not replicated) — the no-plain-replicated rule is net-only.
@@ -90,6 +91,14 @@ public:
 	/** Every ownership claim at capture time. */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "SimGrid|Save")
 	TArray<FSimGrid_SavedOwnership> Ownership;
+
+	/**
+	 * Every painted zone cell at capture time. Captured from the authority zone carrier. Additive
+	 * field: saves written before zone support load with an empty Zones array and restore silently
+	 * (RestoreInto ignores it when no carrier is present), so old saves remain compatible.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "SimGrid|Save")
+	TArray<FSimGrid_SavedZone> Zones;
 
 	/**
 	 * Snapshot the grid from the world subsystem's carriers. AUTHORITY ONLY (returns false and logs on

@@ -45,6 +45,14 @@ void USimEco_PlayerTradeComponent::GetLifetimeReplicatedProps(TArray<FLifetimePr
 	DOREPLIFETIME_CONDITION(USimEco_PlayerTradeComponent, Staged, COND_OwnerOnly);
 }
 
+void USimEco_PlayerTradeComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	// Re-bind the fast-array back-pointer: it is NotReplicated/Transient, so after net-deserialization
+	// it is null and the PostReplicatedAdd/Change notifications would be lost. Matches USimEco_BankComponent.
+	Staged.OwnerComponent = this;
+}
+
 void USimEco_PlayerTradeComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	// On disconnect/destroy, refund this side's escrow and tear the session down on both partners.

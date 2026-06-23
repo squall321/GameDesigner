@@ -9,6 +9,7 @@
 #include "Core/DPSubsystemLibrary.h"
 #include "MessageBus/DPMessageBusSubsystem.h"
 #include "MessageBus/DPMessage.h"
+#include "Combat/Seam_DamageReactor.h"
 
 // FInstancedStruct is used directly here (FInstancedStruct::Make for the bus payload). Include it
 // explicitly rather than leaning on a transitive include; version-gated for the 5.3-5.5 band.
@@ -200,6 +201,26 @@ void UCombat_HealthComponent::HandleDeath(AActor* Killer)
 {
 	OnDeath.Broadcast(this, Killer);
 	BroadcastDeathMessage(Killer);
+
+	// Notify defeat reactors (audio, VFX, quests, AI) via the shared seam — mirrors the damage
+	// pipeline's NotifyReactors() fan-out. HandleDeath runs exactly once per death (gated by bIsDead),
+	// so OnDefeated cannot double-fire.
+	if (AActor* Owner = GetOwner())
+	{
+		if (Owner->GetClass()->ImplementsInterface(USeam_DamageReactor::StaticClass()))
+		{
+			ISeam_DamageReactor::Execute_OnDefeated(Owner, Killer);
+		}
+
+		TArray<UActorComponent*> Components = Owner->GetComponentsByInterface(USeam_DamageReactor::StaticClass());
+		for (UActorComponent* Comp : Components)
+		{
+			if (Comp)
+			{
+				ISeam_DamageReactor::Execute_OnDefeated(Comp, Killer);
+			}
+		}
+	}
 
 	UE_LOG(LogDP, Log, TEXT("[Combat] %s died (killer: %s)"),
 		*GetNameSafe(GetOwner()), *GetNameSafe(Killer));

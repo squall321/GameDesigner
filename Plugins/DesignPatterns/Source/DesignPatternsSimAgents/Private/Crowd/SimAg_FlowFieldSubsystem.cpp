@@ -34,6 +34,14 @@ void USimAg_FlowFieldSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void USimAg_FlowFieldSubsystem::Deinitialize()
 {
+	// Withdraw the flow-field seam fallback so the GameInstance-scoped locator does not retain a dangling
+	// weak entry to this world-scoped subsystem. Matches ClockSubsystem/JobBoardSubsystem teardown.
+	if (UDP_ServiceLocatorSubsystem* Locator =
+		FDP_SubsystemStatics::GetGameInstanceSubsystem<UDP_ServiceLocatorSubsystem>(this))
+	{
+		Locator->UnregisterService(SimAgNativeTags::Service_FlowField);
+	}
+
 	RegisteredAgents.Reset();
 	Super::Deinitialize();
 }

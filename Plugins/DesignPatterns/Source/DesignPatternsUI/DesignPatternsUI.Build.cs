@@ -18,7 +18,8 @@ public class DesignPatternsUI : ModuleRules
 			"Slate",
 			"SlateCore",
 			"FieldNotification",   // INotifyFieldValueChanged backing for the lite ViewModel
-			"DesignPatterns"       // core: hosts the message bus this module subscribes to
+			"DesignPatterns",      // core: hosts the message bus this module subscribes to
+			"DesignPatternsSeams"  // shared safe-zone / glyph / accessibility / highlight seams (resolved via the locator)
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]

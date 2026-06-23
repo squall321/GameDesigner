@@ -4,7 +4,7 @@
 #include "Placement/SimGrid_PlacementRuleStrategy.h"
 #include "Interfaces/SimGrid_Placeable.h"
 #include "Interfaces/SimGrid_GhostPreview.h"
-#include "SimGrid_DeveloperSettings.h"
+#include "Settings/SimGrid_DeveloperSettings.h"
 #include "SimGrid_NativeTags.h"
 #include "Core/DPLog.h"
 #include "Core/DPSubsystemLibrary.h"

@@ -44,6 +44,12 @@ void URPG_QuestTrackerViewModel::Unbind()
 	Tracker.Reset();
 }
 
+void URPG_QuestTrackerViewModel::BeginDestroy()
+{
+	Unbind();
+	Super::BeginDestroy();
+}
+
 void URPG_QuestTrackerViewModel::SetTrackedQuest(FGameplayTag QuestTag)
 {
 	ExplicitQuest = QuestTag;

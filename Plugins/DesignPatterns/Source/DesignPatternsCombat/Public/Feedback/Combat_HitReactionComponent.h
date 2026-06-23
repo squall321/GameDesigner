@@ -76,6 +76,9 @@ private:
 	/** Bus subscription handle (so we can unsubscribe in EndPlay). */
 	FDP_ListenerHandle BusHandle;
 
+	/** Timer for the hitstop restore; kept as a member so EndPlay can cancel a pending callback. */
+	FTimerHandle HitstopTimerHandle;
+
 	/** Play the cosmetic reaction for a resolved hit (local only). */
 	void PlayReaction(FGameplayTag ReactionTag, const FVector& ImpactPoint, bool bCritical, bool bWeakpoint, bool bStagger);
 

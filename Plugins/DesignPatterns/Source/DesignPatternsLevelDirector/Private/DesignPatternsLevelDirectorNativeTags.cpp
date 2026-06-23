@@ -17,4 +17,12 @@ namespace LvlNativeTags
 
 	// Persistence record kinds, anchored under the core DP.Persist root.
 	UE_DEFINE_GAMEPLAY_TAG(Persist_Lvl_Placement,        "DP.Persist.Lvl.Placement");
+
+	// Pacing additions: bus channels under DP.Bus.Lvl, the encounter-director service key under
+	// DP.Service.AI (the implementer is the AI module, so the seam key lives under DP.Service.AI to
+	// match where that adapter registers), and the graph persistence kind under DP.Persist.Lvl.
+	UE_DEFINE_GAMEPLAY_TAG(Bus_Lvl_Pacing_Escalated,     "DP.Bus.Lvl.Pacing.Escalated");
+	UE_DEFINE_GAMEPLAY_TAG(Bus_Lvl_Pacing_Relaxed,       "DP.Bus.Lvl.Pacing.Relaxed");
+	UE_DEFINE_GAMEPLAY_TAG(Service_Lvl_EncounterDirector,"DP.Service.AI.EncounterDirector");
+	UE_DEFINE_GAMEPLAY_TAG(Persist_Lvl_Graph,            "DP.Persist.Lvl.Graph");
 }

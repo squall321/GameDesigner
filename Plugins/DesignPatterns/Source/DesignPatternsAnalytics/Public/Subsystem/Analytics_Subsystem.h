@@ -16,6 +16,24 @@ class UDP_MessageBusSubsystem;
 class ISeam_AnalyticsSink;
 
 /**
+ * Broadcast immediately AFTER the consent gate passes inside RecordEvent, once a fully-resolved
+ * event has been appended to the buffer. This is the additive in-process observer hook the
+ * deepening subsystems (funnel, heatmap, breadcrumb, debug dashboard...) subscribe to so they can
+ * react to recorded telemetry WITHOUT polling the buffer and without altering RecordEvent's
+ * existing signature or behaviour.
+ *
+ * Non-dynamic multicast (no UMG/BP coupling needed): observers are C++ subsystems in this module.
+ * The payload is the same PII-safe data the buffer holds — an event tag plus FSeam_AnalyticsAttr
+ * values (which structurally cannot carry FText/UObject/raw id). It is delivered by const ref and
+ * is a copy of buffer data, so a handler must not assume the referenced event survives the call.
+ *
+ * Threading: fired on the game thread only (RecordEvent is game-thread only), so handlers run on
+ * the game thread and may safely touch UObjects.
+ */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FAnalytics_OnEventRecorded,
+	FGameplayTag /*EventTag*/, const TArray<FSeam_AnalyticsAttr>& /*Attributes*/);
+
+/**
  * A single buffered, fully-resolved analytics event ready to hand to a sink.
  *
  * This is a PLAIN copyable value (tag + PII-safe attributes only). It contains no UObject
@@ -103,6 +121,14 @@ public:
 	/** Convenience: record an event with no attributes. */
 	UFUNCTION(BlueprintCallable, Category = "DesignPatterns|Analytics")
 	void RecordSimpleEvent(FGameplayTag EventTag);
+
+	/**
+	 * Fires inside RecordEvent immediately AFTER the consent gate passes and the event is buffered.
+	 * In-process, game-thread observer hook for the deepening telemetry subsystems. Never fires while
+	 * consent is off (the consent contract is preserved). Additive — does not change RecordEvent's
+	 * public signature or its buffering/flush behaviour.
+	 */
+	FAnalytics_OnEventRecorded OnEventRecorded;
 
 	/** Force an immediate flush of the buffered events to the active sink. */
 	UFUNCTION(BlueprintCallable, Category = "DesignPatterns|Analytics")

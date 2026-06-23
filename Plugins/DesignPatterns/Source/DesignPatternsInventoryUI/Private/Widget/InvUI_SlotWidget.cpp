@@ -110,7 +110,6 @@ void UInvUI_SlotWidget::UnbindViewModelDelegates()
 	{
 		SlotViewModel->RemoveAllFieldValueChangedDelegates(this);
 	}
-	FieldChangedHandle.Reset();
 	bBoundToViewModel = false;
 }
 
