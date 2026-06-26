@@ -21,8 +21,9 @@ public class DesignPatternsTests : ModuleRules
 		{
 			"GameplayTags",
 			"DesignPatterns",        // core systems under test
-			"DesignPatternsSeams",   // seam value types (FSeam_NetValue)
-			"DesignPatternsProgression"  // wallet logic under test
+			"DesignPatternsSeams",   // seam value types (FSeam_NetValue) + seam default-impl regression tests
+			"DesignPatternsProgression",  // wallet logic under test
+			"DesignPatternsSimGrid"  // USimGrid_DeveloperSettings merge invariants under test
 		});
 
 		// FInstancedStruct (used to build message payloads in the bus test) is in StructUtils on 5.3/5.4.
