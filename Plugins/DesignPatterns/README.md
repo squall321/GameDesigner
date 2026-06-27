@@ -260,9 +260,22 @@ real sessions are compiled in (gated by `WITH_DP_ONLINE`).
 ## 9. Tests
 
 `DesignPatternsTests` ships Automation tests (Editor → **Tools → Test Automation**, filter
-`DesignPatterns.*`), covering message-bus tag routing and listener lifetime, and service-locator
-register/resolve/weak-invalidation. They run without a live world where possible, so they are fast
-and deterministic.
+`DesignPatterns.*`). They run without a live world (pure logic, or a tiny `NewObject` in the
+transient package), so they are fast and deterministic. Current coverage:
+
+| Suite | What it pins |
+|---|---|
+| `DesignPatterns.Bus.*` | Message-bus tag routing + listener lifetime |
+| `DesignPatterns.Service.*` | Service-locator register / resolve / weak-invalidation |
+| `DesignPatterns.Seams.NetValue.*` | `FSeam_NetValue` type/equality, net-serialize roundtrip, `FInstancedStruct` conversion |
+| `DesignPatterns.Seams.Defaults.*` | Every audited `BlueprintNativeEvent` seam links + returns its inert/fail-safe default (regression-guards the missing-`_Implementation` class) |
+| `DesignPatterns.SimGrid.Settings.*` | The merged `USimGrid_DeveloperSettings` carries both field sets; `MaxFloodFillCells` stays 8192; `GetSafeChunkSize` clamps |
+| `DesignPatterns.SimGrid.CoordMath.*` | Floor-div / pos-mod negative-coordinate correctness, cell↔chunk mapping, rotation, distance, neighbours |
+| `DesignPatterns.SimGrid.AutoTile.*` | Adjacency-bitmask blob rule, marching-squares case, connected-region labeling (over a mock read-seam grid) |
+| `DesignPatterns.SimGrid.Fog.*` | Fog RLE run-array contains / ensure / remove (the replicated visibility core) |
+| `DesignPatterns.InventoryUI.Spatial.*` | Tetris spatial bin-packer first-fit, no-overlap, and bounds rejections |
+
+Many of these lock in fixes from the deepening audits (§1e), so a reverted fix fails a test.
 
 ---
 
