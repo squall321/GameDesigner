@@ -272,6 +272,7 @@ transient package), so they are fast and deterministic. Current coverage:
 | `DesignPatterns.SimGrid.Settings.*` | The merged `USimGrid_DeveloperSettings` carries both field sets; `MaxFloodFillCells` stays 8192; `GetSafeChunkSize` clamps |
 | `DesignPatterns.SimGrid.CoordMath.*` | Floor-div / pos-mod negative-coordinate correctness, cell↔chunk mapping, rotation, distance, neighbours |
 | `DesignPatterns.SimGrid.AutoTile.*` | Adjacency-bitmask blob rule, marching-squares case, connected-region labeling (over a mock read-seam grid) |
+| `DesignPatterns.SimGrid.Path.*` | A* over a mock grid: straight line, start==goal, blocked endpoint, no-path, detour around a wall (step count + contiguity) |
 | `DesignPatterns.SimGrid.Fog.*` | Fog RLE run-array contains / ensure / remove (the replicated visibility core) |
 | `DesignPatterns.InventoryUI.Spatial.*` | Tetris spatial bin-packer first-fit, no-overlap, and bounds rejections |
 
