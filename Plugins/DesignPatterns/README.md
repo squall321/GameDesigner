@@ -275,6 +275,7 @@ transient package), so they are fast and deterministic. Current coverage:
 | `DesignPatterns.SimGrid.Path.*` | A* over a mock grid: straight line, start==goal, blocked endpoint, no-path, detour around a wall (step count + contiguity) |
 | `DesignPatterns.SimGrid.Fog.*` | Fog RLE run-array contains / ensure / remove (the replicated visibility core) |
 | `DesignPatterns.InventoryUI.Spatial.*` | Tetris spatial bin-packer first-fit, no-overlap, and bounds rejections |
+| `DesignPatterns.RPG.Stats.*` | Dual-path stat fold `(base+Σadd)·Π(1+mult)`, override precedence, group replace/remove, multi-source — guards the local-derived (no-authority) modifier path against desync |
 
 Many of these lock in fixes from the deepening audits (§1e), so a reverted fix fails a test.
 
